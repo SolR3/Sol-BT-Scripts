@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+
+# standard imports
+import os
+import re
+import sys
+import time
+
+
+def main():
+    keep_days = 3
+    base_folder = "/dev/shm"
+    subnet = int(sys.argv[1])
+    doit = len(sys.argv) == 3 and sys.argv[2] == "--doit"
+
+    time_threshold = keep_days * 86400
+    now = time.time()
+    file_regex = {
+        38: r"^torch_\d+_\d+_\d+$"
+    }.get(subnet)
+
+    print("Deleting files:")
+
+    for name in os.listdir(base_folder):
+        path = os.path.join(base_folder, name)
+        
+        if not os.path.isfile(path):
+            continue
+        
+        if not re.match(file_regex, name):
+            continue
+        
+        if now - os.stat(path).st_mtime < time_threshold:
+            continue
+
+        print(f"    {path}")
+        if doit:
+            os.unlink(path)
+
+
+if __name__ == "__main__":
+    main()
