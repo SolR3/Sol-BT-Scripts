@@ -35,7 +35,9 @@ def get_blacklisting_keys(log_file, blacklisting_keys):
         lines = fd.readlines()
     
     for line in lines:
-        blacklisting_keys.add(key_regex.search(line).group("key"))
+        match = key_regex.search(line)
+        if match:
+            blacklisting_keys.add(match.group("key"))
 
 
 def write_json_file(blacklisting_keys):
