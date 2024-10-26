@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import re
+import time
+
+
+def get_log_files():
+    one_day = 60*60*24
+    currrent_time = time.time()
+    log_name_regex = re.compile(r"^rizzo25-out(__[\d_\-]+)?\.log$")
+    log_dir = "/home/rizzo/.bittensor/.pm2/logs"
+
+    # Loop through all log files
+    for log_name in os.listdir(log_dir):
+        # If the file is not a rizzo25-out log file then skip.
+        if not log_name_regex.match(log_name):
+            continue
+
+        # If the file is older than a day then skip.
+        log_file = os.path.join(log_dir, log_name)
+        if currrent_time - os.stat(log_file).st_mtime > one_day:
+            continue
+
+        yield log_file
+
+
+def get_blacklisting_keys(log_file, blacklisting_keys):
+    # Search the log file for blacklisting miner keys and add them to
+    # the blacklisting_keys set
+    key_regex = re.compile(r"\| JobSubmissionSynapse \| (?P<key>\w+) \|")
+    
+    with open(log_file, "r") as fd:
+        lines = fd.readlines()
+    
+    for line in lines:
+        blacklisting_keys.add(key_regex.search(line).group("key"))
+
+
+def write_json_file(blacklisting_keys):
+    subnet_dir = "/home/rizzo/.bittensor/subnets/folding"
+
+    # Write a json file with the current date
+    str_d = time.strftime("%Y-%m-%d")
+    json_basename = f"sn25_blacklising_keys_{str_d}.json"
+    json_file = os.path.join(
+        str(subnet_dir), json_basename)
+    with open(json_file, "w") as fd:
+        json.dump(sorted(list(blacklisting_keys)), fd, indent=4)
+    
+    # Symlink the new json file to the file used by the validator.
+    json_link = os.path.join(
+        str(subnet_dir), "sn25_blacklisted_keys.json")
+    if os.path.exists(json_link):
+        os.unlink(json_link)
+    os.symlink(json_basename, json_link)
+
+
+def main():
+    blacklisting_keys = set()
+
+    for log_file in get_log_files():
+        get_blacklisting_keys(log_file, blacklisting_keys)
+
+    write_json_file(blacklisting_keys)
+
+
+if __name__ == "__main__":
+    main()
