@@ -10,7 +10,7 @@ def get_log_files():
     one_day = 60*60*24
     currrent_time = time.time()
     log_name_regex = re.compile(r"^rizzo25-out(__[\d_\-]+)?\.log$")
-    log_dir = "/home/rizzo/.bittensor/.pm2/logs"
+    log_dir = "/home/rizzo/.pm2/logs"
 
     # Loop through all log files
     for log_name in os.listdir(log_dir):
