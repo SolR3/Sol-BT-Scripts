@@ -35,6 +35,8 @@ def get_blacklisting_keys(log_file, blacklisting_keys):
         lines = fd.readlines()
     
     for line in lines:
+        if "| 403 | Forbidden. Key is blacklisted" not in line:
+            continue
         match = key_regex.search(line)
         if match:
             blacklisting_keys.add(match.group("key"))
