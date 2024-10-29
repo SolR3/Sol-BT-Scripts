@@ -24,7 +24,7 @@ def _parse_args():
         help="The uid of the subnet.")
 
     parser.add_argument(
-        "-p", "--pm2-proccess",
+        "-p", "--pm2-process",
         action = Pm2Action,
         help="The name of the pm2 process.")
 
@@ -101,7 +101,7 @@ class ValidatorUpdatedChecker:
 class ValidatorUpdatedCheckerPm2(ValidatorUpdatedChecker):
     def __init__(self, options):
         self._netuid = options.netuid
-        self._process_name = options.pm2_proccess
+        self._process_name = options.pm2_process
         super(ValidatorUpdatedCheckerPm2, self).__init__()
 
     def _do_restart(self):
