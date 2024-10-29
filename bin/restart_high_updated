@@ -34,7 +34,7 @@ def _parse_args():
 class ValidatorUpdatedChecker:
     _rizzo_hotkey = "5F2CsUDVbRbVMXTh9fAzF9GacjVX7UapvRxidrxe7z8BYckQ"
     _updated_threshold = 4
-    _updated_check_increment = 1/360#0.5
+    _updated_check_increment = 0.5
     
     def __init__(self):
         bittensor.logging.enable_debug()
