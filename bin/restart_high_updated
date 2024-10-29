@@ -3,7 +3,6 @@
 # standard imports
 import argparse
 import bittensor
-import re
 import subprocess
 import time
 
@@ -21,11 +20,13 @@ def _parse_args():
     parser.add_argument(
         "-n", "--netuid",
         type=int,
+        required=True,
         help="The uid of the subnet.")
 
     parser.add_argument(
         "-p", "--pm2-process",
         action = Pm2Action,
+        required=True,
         help="The name of the pm2 process.")
 
     return parser.parse_args()
@@ -109,47 +110,7 @@ class ValidatorUpdatedCheckerPm2(ValidatorUpdatedChecker):
 
         # There is a pm2 python module but it's buggy.
         # Doing this manually instead.
-        list_cmd = ["pm2", "jlist"]
-        list_cmd_str = " ".join(list_cmd)
-        bittensor.logging.info(f"Running command: '{list_cmd_str}'")
-        process = subprocess.Popen(
-            list_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-        
-        if process.returncode:
-            stderr = stderr.decode()
-            bittensor.logging.error(
-                f"'{list_cmd_str}' command failed with return code "
-                f"{process.returncode}. Error:\n{stderr}")
-            return False
-
-        stdout = stdout.decode()
-        ids = re.findall(r"\"pm_id\":(?P<id>\d+)", stdout)
-        names = re.findall(r"\"name\":\"(?P<name>\w+)\"", stdout)
-        if not ids or not names:
-            bittensor.logging.error(
-                f"Could not find pm2 process ids and names from "
-                f"'{list_cmd_str}'\nCommand output:\n{stdout}")
-            return False
-        
-        try:
-            index = names.index(self._process_name)
-        except ValueError:
-            bittensor.logging.error(
-                f"Could not find process name '{self._process_name}' "
-                f"from '{list_cmd_str}'\nCommand output:\n{stdout}")
-            return False
-        
-        try:
-            pm2_id = ids[index]
-        except IndexError:
-            bittensor.logging.error(
-                "Could not find process id for process "
-                f"'{self._process_name}' from '{list_cmd_str}'"
-                f"\nCommand output:\n{stdout}")
-            return False
-
-        restart_cmd = ["pm2", "restart", pm2_id]
+        restart_cmd = ["pm2", "restart", self._process_name]
         restart_cmd_str = " ".join(restart_cmd)
         bittensor.logging.info(f"Running command: '{restart_cmd_str}'")
         process = subprocess.Popen(
@@ -163,7 +124,9 @@ class ValidatorUpdatedCheckerPm2(ValidatorUpdatedChecker):
                 f"{process.returncode}. Error:\n{stderr}")
             return False
         
-        bittensor.logging.info(f"Process {pm2_id} '{self._process_name}' "
+        stdout = stdout.decode()
+        bittensor.logging.info(f"Restart command output:\n{stdout}")
+        bittensor.logging.info(f"Process '{self._process_name}' "
                                 "successfully restarted.")
         return True
 
