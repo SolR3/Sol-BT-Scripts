@@ -38,16 +38,6 @@ def _parse_args():
              "For example, if this value is 3, then the validator will be "
              "restarted if its Updated value is greater than "
              "(subnet_tempo * 3).")
-    
-    parser.add_argument(
-        "-i", "--check-time-increment",
-        type=float,
-        default=0.25,
-        help="The multiplier on the subnet's tempo value used to calculate "
-             "the time increment between Updated value checks. For example, "
-             "if this value is 0.25, then the validator's Updated value will "
-             "be checked every (subnet_tempo * 12 * 0.25) seconds.")
-
 
     return parser.parse_args()
 
@@ -57,7 +47,6 @@ class ValidatorUpdatedChecker:
     
     def __init__(self, options):
         self._updated_threshold = options.updated_threshold
-        self._check_time_increment = options.check_time_increment
         self._check_for_restart = True
 
         self._subtensor = bittensor.subtensor()
@@ -71,47 +60,49 @@ class ValidatorUpdatedChecker:
         self._run()
 
     def _run(self):
-        sleep_interval = int(
-            self._subnet_tempo * self._check_time_increment * 12
-        )
+        default_sleep_interval = self._subnet_tempo * 12
+
         while True:
-            self._check_updated_value()
+            rizzo_updated = self._subtensor.blocks_since_last_update(
+                    netuid=self._netuid, uid=self._rizzo_uid)
+            bittensor.logging.info("")
+            bittensor.logging.info(f"Rizzo Updated is {rizzo_updated} blocks.")
+
+            if self._check_for_restart:
+                # If the rizzo updated value is greater than the restart threshold
+                # the do a restart and set _check_for_restart to False.
+                bittensor.logging.info("Check for restart is True.")
+                if rizzo_updated >= self._restart_threshold:
+                    bittensor.logging.info(f"Updated value {rizzo_updated} "
+                                           f">= {self._restart_threshold}")
+                    if self._do_restart():
+                        bittensor.logging.info("Setting check for restart to False.")
+                        self._check_for_restart = False
+                else:
+                    bittensor.logging.info(f"Updated value {rizzo_updated} "
+                                           f"< {self._restart_threshold}")
+                    bittensor.logging.info("Doing nothing.")
+            else:
+                # If the rizzo updated value is less than the restart threshold
+                # then set _check_for_restart.
+                bittensor.logging.info("Check for restart is False.")
+                if rizzo_updated < self._restart_threshold:
+                    bittensor.logging.info(f"Updated value {rizzo_updated} "
+                                           f"< {self._restart_threshold}")
+                    bittensor.logging.info("Setting check for restart to True.")
+                    self._check_for_restart = True
+                else:
+                    bittensor.logging.info(f"Updated value {rizzo_updated} "
+                                           f">= {self._restart_threshold}")
+                    bittensor.logging.info("Doing nothing.")
+
+            seconds_until_threshold = \
+                (self._restart_threshold - rizzo_updated) * 12
+            sleep_interval = (seconds_until_threshold
+                              if seconds_until_threshold > 0
+                              else default_sleep_interval)
             bittensor.logging.info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
-
-    def _check_updated_value(self):
-        bittensor.logging.info("")
-        rizzo_updated = self._subtensor.blocks_since_last_update(
-                netuid=self._netuid, uid=self._rizzo_uid)
-        bittensor.logging.info(f"Rizzo Updated is {rizzo_updated} blocks.")
-
-        if self._check_for_restart:
-            # If the rizzo updated value is greater than the restart threshold
-            # the do a restart and set _check_for_restart to False.
-            bittensor.logging.info("Check for restart is True.")
-            if rizzo_updated >= self._restart_threshold:
-                bittensor.logging.info(f"Updated value {rizzo_updated} "
-                                       f">= {self._restart_threshold}")
-                if self._do_restart():
-                    bittensor.logging.info("Setting check for restart to False.")
-                    self._check_for_restart = False
-            else:
-                bittensor.logging.info(f"Updated value {rizzo_updated} "
-                                       f"< {self._restart_threshold}")
-                bittensor.logging.info("Doing nothing.")
-        else:
-            # If the rizzo updated value is less than the restart threshold
-            # then set _check_for_restart.
-            bittensor.logging.info("Check for restart is False.")
-            if rizzo_updated < self._restart_threshold:
-                bittensor.logging.info(f"Updated value {rizzo_updated} "
-                                       f"< {self._restart_threshold}")
-                bittensor.logging.info("Setting check for restart to True.")
-                self._check_for_restart = True
-            else:
-                bittensor.logging.info(f"Updated value {rizzo_updated} "
-                                       f">= {self._restart_threshold}")
-                bittensor.logging.info("Doing nothing.")
 
     def _do_restart(self):
         raise NotImplementedError
