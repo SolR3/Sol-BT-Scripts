@@ -28,18 +28,36 @@ def _parse_args():
         action = Pm2Action,
         required=True,
         help="The name of the pm2 process.")
+    
+    parser.add_argument(
+        "-t", "--updated-threshold",
+        type=float,
+        default=3,
+        help="The multiplier on the subnet's tempo value used to calculate "
+             "the Updated threshold value for which to restart the validator. "
+             "For example, if this value is 3, then the validator will be "
+             "restarted if its Updated value is greater than "
+             "(subnet_tempo * 3).")
+    
+    parser.add_argument(
+        "-i", "--check-time-increment",
+        type=float,
+        default=0.25,
+        help="The multiplier on the subnet's tempo value used to calculate "
+             "the time increment between Updated value checks. For example, "
+             "if this value is 0.25, then the validator's Updated value will "
+             "be checked every (subnet_tempo * 12 * 0.25) seconds.")
+
 
     return parser.parse_args()
 
 
 class ValidatorUpdatedChecker:
     _rizzo_hotkey = "5F2CsUDVbRbVMXTh9fAzF9GacjVX7UapvRxidrxe7z8BYckQ"
-    _updated_threshold = 4
-    _updated_check_increment = 0.5
     
-    def __init__(self):
-        bittensor.logging.enable_debug()
-
+    def __init__(self, options):
+        self._updated_threshold = options.updated_threshold
+        self._check_time_increment = options.check_time_increment
         self._check_for_restart = True
 
         self._subtensor = bittensor.subtensor()
@@ -54,7 +72,7 @@ class ValidatorUpdatedChecker:
 
     def _run(self):
         sleep_interval = int(
-            self._subnet_tempo * self._updated_check_increment * 12
+            self._subnet_tempo * self._check_time_increment * 12
         )
         while True:
             self._check_updated_value()
@@ -103,7 +121,7 @@ class ValidatorUpdatedCheckerPm2(ValidatorUpdatedChecker):
     def __init__(self, options):
         self._netuid = options.netuid
         self._process_name = options.pm2_process
-        super(ValidatorUpdatedCheckerPm2, self).__init__()
+        super(ValidatorUpdatedCheckerPm2, self).__init__(options)
 
     def _do_restart(self):
         bittensor.logging.info(f"Restarting process '{self._process_name}'.")
@@ -137,6 +155,7 @@ class ValidatorUpdatedCheckerDocker(ValidatorUpdatedChecker):
 
 
 def main():
+    bittensor.logging.enable_debug()
     options = _parse_args()
     options.checker_class(options)
 
