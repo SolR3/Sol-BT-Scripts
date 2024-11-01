@@ -1378,6 +1378,8 @@ class Validator:
 def _restart_validator():
     import subprocess
 
+    bt.logging.error(f"BrokenPipeError was raised.\n{traceback.format_exc()}")
+    bt.logging.error("Restarting Validator.")
     restart_script = os.path.expanduser("~/rsn37.sh")
     cmd = ["setsid", restart_script]
     subprocess.Popen(cmd)
