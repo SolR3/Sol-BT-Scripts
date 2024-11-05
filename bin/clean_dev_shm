@@ -39,6 +39,7 @@ def main():
 
         print(f"    {path}")
         if doit:
+            print(f"    {path}")
             os.unlink(path)
 
 
