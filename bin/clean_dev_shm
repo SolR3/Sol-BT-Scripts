@@ -27,6 +27,8 @@ def _parse_args():
         action="store_true",
         help="Loop and wait rather than run once. Needed when running as a "
              "pm2 process instead of a cron.")
+    
+    return parser.parse_args()
 
 
 def main():
