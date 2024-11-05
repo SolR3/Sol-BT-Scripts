@@ -18,15 +18,23 @@ def _parse_args():
         help="The uid of the subnet.")
     
     parser.add_argument(
+        "-k", "--keep-days",
+        type=float,
+        required=True,
+        default=3,
+        help="The number of days to keep.")
+    
+    parser.add_argument(
         "-d", "--doit",
         action="store_true",
         help="Actually do the delete.")
     
     parser.add_argument(
         "-l", "--loop",
-        action="store_true",
+        int,
         help="Loop and wait rather than run once. Needed when running as a "
-             "pm2 process instead of a cron.")
+             "pm2 process instead of a cron. The value here is the number of "
+             "seconds to wait.")
     
     return parser.parse_args()
 
@@ -40,19 +48,17 @@ def main():
 
 
 def run_on_loop(options):
-    sleep_time =  86400 # One day
     while True:
         delete_files(options)
-        print(f"Sleeping for {sleep_time} seconds.")
-        time.sleep(sleep_time)
+        print(f"Sleeping for {options.loop} seconds.")
+        time.sleep(options.loop)
 
 
 def delete_files(options):
-    keep_days = 3
     base_folder = "/dev/shm"
     subnet = options.netuid
 
-    time_threshold = keep_days * 86400
+    time_threshold = options.keep_days * 86400
     now = time.time()
     file_regexes = {
         37: [r"^torch_\d+_\d+_\d+$", r"^sem.mp-\w+$"],
