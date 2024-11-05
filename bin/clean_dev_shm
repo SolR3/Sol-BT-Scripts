@@ -3,15 +3,52 @@
 # standard imports
 import os
 import re
-import sys
 import time
 
 
+import argparse
+
+def _parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-n", "--netuid",
+        type=int,
+        required=True,
+        help="The uid of the subnet.")
+    
+    parser.add_argument(
+        "-d", "--doit",
+        action="store_true",
+        help="Actually do the delete.")
+    
+    parser.add_argument(
+        "-l", "--loop",
+        action="store_true",
+        help="Loop and wait rather than run once. Needed when running as a "
+             "pm2 process instead of a cron.")
+
+
 def main():
+    options = _parse_args()
+    if options.loop:
+        run_on_loop(options)
+    else:
+        delete_files(options)
+
+
+def run_on_loop(options):
+    sleep_time =  86400 # One day
+    while True:
+        delete_files(options)
+        print(f"Sleeping for {sleep_time} seconds.")
+        time.sleep(sleep_time)
+
+
+def delete_files(options):
     keep_days = 3
     base_folder = "/dev/shm"
-    subnet = int(sys.argv[1])
-    doit = len(sys.argv) == 3 and sys.argv[2] == "--doit"
+    subnet = options.netuid
 
     time_threshold = keep_days * 86400
     now = time.time()
@@ -38,8 +75,7 @@ def main():
             continue
 
         print(f"    {path}")
-        if doit:
-            print(f"    {path}")
+        if options.doit:
             os.unlink(path)
 
 
