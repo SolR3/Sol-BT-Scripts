@@ -16,7 +16,8 @@ def main():
     time_threshold = keep_days * 86400
     now = time.time()
     file_regex = {
-        38: r"^torch_\d+_\d+_\d+$"
+        37: r"^torch_\d+_\d+_\d+$",
+        38: r"^torch_\d+_\d+_\d+$",
     }.get(subnet)
 
     print("Deleting files:")
