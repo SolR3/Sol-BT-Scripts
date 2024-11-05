@@ -15,9 +15,9 @@ def main():
 
     time_threshold = keep_days * 86400
     now = time.time()
-    file_regex = {
-        37: r"^torch_\d+_\d+_\d+$",
-        38: r"^torch_\d+_\d+_\d+$",
+    file_regexes = {
+        37: [r"^torch_\d+_\d+_\d+$", r"^sem.mp-\w+$"],
+        38: [r"^torch_\d+_\d+_\d+$"],
     }.get(subnet)
 
     print("Deleting files:")
@@ -28,7 +28,10 @@ def main():
         if not os.path.isfile(path):
             continue
         
-        if not re.match(file_regex, name):
+        for file_regex in file_regexes:
+            if re.match(file_regex, name):
+                break
+        else:
             continue
         
         if now - os.stat(path).st_mtime < time_threshold:
