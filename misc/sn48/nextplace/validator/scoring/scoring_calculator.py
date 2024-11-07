@@ -122,8 +122,7 @@ class ScoringCalculator:
         try:
             predicted_date = datetime.strptime(predicted_date, "%Y-%m-%d").date()
         except ValueError:
-            import traceback
-            traceback.print_exc()
+            predicted_date = datetime.strptime(predicted_date, "%Y-%m-%dT%H:%M:%S.%f").date()
 
         # Calculate the absolute difference in days
         date_difference = abs((actual_date - predicted_date).days)
