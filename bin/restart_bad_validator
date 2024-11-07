@@ -214,23 +214,29 @@ class ValidatorRestarterScript:
     def _do_restart(self):
         bittensor.logging.info(f"Restarting subnet {self._netuid}.")
         bittensor.logging.info(f"Running script: {self._restart_script}")
-        
-        restart_cmd = [self._restart_script]
         if self._restart_venv:
             bittensor.logging.info(f"Running in venv: {self._restart_venv}")
-            fd, restart_script = tempfile.mkstemp(dir=self._restart_dir,
-                prefix = f"restart_{self._netuid}_", suffix=".sh")
-            os.close(fd)
-            os.chmod(restart_script, 0o700)
-            
-            bittensor.logging.info(f"Packaging venv and script into {restart_script}")
-            with open(restart_script, "w") as fd:
+
+        fd, restart_script = tempfile.mkstemp(dir=self._restart_dir,
+            prefix = f"restart_{self._netuid}_", suffix=".sh")
+        os.close(fd)
+        os.chmod(restart_script, 0o700)
+
+        bittensor.logging.info(f"Packaging venv and script into {restart_script}")
+        with open(restart_script, "w") as fd:
+            # TODO - This could probably be cleaned up a little
+            if self._restart_venv:
                 fd.write("#!/bin/bash\n"
-                         "\n"
-                         "deactivate\n"
-                         f"source {self._restart_venv}/bin/activate\n"
-                         f"{self._restart_script}\n")
-            restart_cmd = [restart_script]
+                            "\n"
+                            "deactivate\n"
+                            f"source {self._restart_venv}/bin/activate\n"
+                            f"{self._restart_script}\n")
+            else:
+                fd.write("#!/bin/bash\n"
+                        "\n"
+                        "deactivate\n"
+                        f"{self._restart_script}\n")
+        restart_cmd = [restart_script]
 
         restart_cmd_str = " ".join(restart_cmd)
         bittensor.logging.info(f"Running command: '{restart_cmd_str}'")
