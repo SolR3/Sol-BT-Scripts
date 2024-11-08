@@ -211,7 +211,10 @@ class BaseValidatorNeuron(BaseNeuron):
                 # Run multiple forwards concurrently.
                 #self.loop.run_until_complete(self.concurrent_forward())
 
+                bt.logging.info(f"{self.forward=}")
+                bt.logging.info("BEFORE self.forward() call")
                 await self.forward()
+                bt.logging.info("AFTER self.forward() call")
 
                 # Check if we should exit.
                 if self.should_exit:
