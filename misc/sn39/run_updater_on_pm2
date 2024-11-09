@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+
+# standard imports
+import argparse
+import os
+import subprocess
+import time
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "subnet_dir",
+        required=True,
+        help="The git repo directory for the subnet.")
+
+    parser.add_argument(
+        "pm2_process",
+        required=True,
+        help="The name of the pm2 process to pass to the updater.")
+
+    return parser.parse_args()
+
+def main():
+    options = _parse_args()
+    sleep_time = 15*60 # 15 minutes
+
+    while True:
+        # Run the updater in a subprocess
+        updater_script = os.path.join(
+            options.subnet_dir, "validator", "auto-update.sh")
+        cmd = [updater_script, options.pm2_process]
+        subprocess.run(cmd)
+
+        # Sleep for 15 minutes
+        time.sleep(sleep_time)
+
+
+if __name__ == "__main__":
+    main()
