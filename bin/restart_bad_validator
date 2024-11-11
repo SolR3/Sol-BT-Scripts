@@ -90,7 +90,6 @@ class ValidatorCheckerUpdated(ValidatorChecker):
 
     def _run(self):
         bittensor.logging.info("Checking for high Updated values")
-        default_sleep_interval = self._subnet_tempo * 12
 
         while True:
             rizzo_updated = self._subtensor.blocks_since_last_update(
@@ -130,7 +129,7 @@ class ValidatorCheckerUpdated(ValidatorChecker):
                 (self._restart_threshold - rizzo_updated) * 12
             sleep_interval = (seconds_until_threshold
                               if seconds_until_threshold > 0
-                              else default_sleep_interval)
+                              else self._restart_threshold * 12)
             bittensor.logging.info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
 
