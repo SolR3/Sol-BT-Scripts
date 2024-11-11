@@ -129,7 +129,7 @@ class ValidatorCheckerUpdated(ValidatorChecker):
                 (self._restart_threshold - rizzo_updated) * 12
             sleep_interval = (seconds_until_threshold
                               if seconds_until_threshold > 0
-                              else self._restart_threshold * 12)
+                              else self._subnet_tempo * 12)
             bittensor.logging.info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
 
