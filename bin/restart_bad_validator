@@ -191,6 +191,10 @@ class ValidatorCheckerPm2LogsSn34(ValidatorCheckerPm2Logs):
     _subnet_patterns = [r"Handshake status 502 Bad Gateway"]
 
 
+class ValidatorCheckerPm2LogsSn18(ValidatorCheckerPm2Logs):
+    _subnet_patterns = [r"asyncio.exceptions.CancelledError"]
+
+
 class ValidatorRestarterScript:
     def __init__(self, options):
         self._netuid = options.netuid
@@ -265,7 +269,8 @@ class ValidatorRestarterDocker:
 
 # TODO - This can be done better
 PM2_LOGS_VALIDATORS_DICT = {
-    34: ValidatorCheckerPm2LogsSn34
+    34: ValidatorCheckerPm2LogsSn34,
+    18: ValidatorCheckerPm2LogsSn18
 }
 
 
