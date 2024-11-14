@@ -76,7 +76,10 @@ class ValidatorCheckerUpdated(ValidatorChecker):
         self._netuid = options.netuid
         self._restarter = options.restarter
         self._updated_threshold = options.updated_threshold
-        self._check_for_restart = True
+        # Start false in case this is added after a manual restart
+        # but before it started setting weights again
+        # TODO - Fix this whole logic
+        self._check_for_restart = False
 
         self._subtensor = bittensor.subtensor()
         self._subnet_tempo = self._subtensor.get_subnet_hyperparameters(
