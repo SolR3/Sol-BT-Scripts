@@ -8,6 +8,7 @@ neurons/validator.py \
 --subtensor.network test \
 --wallet.name bh-wsl-coldkey \
 --wallet.hotkey bh-wsl-hotkey \
+--wallet.path ~/.bittensor/wallets \
 --axon.port 10103 \
 
 #--run_local
