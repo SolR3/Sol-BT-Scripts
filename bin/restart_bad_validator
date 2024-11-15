@@ -60,21 +60,23 @@ def _parse_args():
 
 
 class ValidatorChecker:
-    def __init__(self):
+    def __init__(self, options):
+        self._netuid = options.netuid
+        self._restarter = options.restarter
+
         sleep_time = 15
         bittensor.logging.info(f"Sleeping {sleep_time} seconds in case the "
                                "validator process is just starting.")
         time.sleep(sleep_time)
+        bittensor.logging.info(f"Running Auto Restarter on subnet {self._netuid}")
 
 
 class ValidatorCheckerUpdated(ValidatorChecker):
     _rizzo_hotkey = "5F2CsUDVbRbVMXTh9fAzF9GacjVX7UapvRxidrxe7z8BYckQ"
 
     def __init__(self, options):
-        super(ValidatorCheckerUpdated, self).__init__()
+        super(ValidatorCheckerUpdated, self).__init__(options)
 
-        self._netuid = options.netuid
-        self._restarter = options.restarter
         self._updated_threshold = options.updated_threshold
         # Start false in case this is added after a manual restart
         # but before it started setting weights again
@@ -142,11 +144,9 @@ class ValidatorCheckerPm2Logs(ValidatorChecker):
     _subnet_patterns = []
 
     def __init__(self, options):
-        super(ValidatorCheckerPm2Logs, self).__init__()
+        super(ValidatorCheckerPm2Logs, self).__init__(options)
 
-        self._netuid = options.netuid
         self._pm2_process = options.pm2_process
-        self._restarter = options.restarter
 
         self._run()
 
