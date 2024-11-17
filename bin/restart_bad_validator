@@ -5,6 +5,7 @@ import bittensor
 
 # standard imports
 import argparse
+import json
 import os
 import pty
 import re
@@ -23,29 +24,36 @@ def _parse_args():
         help="The uid of the subnet.")
     
     parser.add_argument(
-        "-s", "--restart-script",
+        "--restart-script",
         required=True,
         help="The restart script path.")
 
     parser.add_argument(
-        "-v", "--restart-venv",
+        "--restart-venv",
         help="The restart venv path.")
 
     updated_group = parser.add_mutually_exclusive_group(required=True)
 
     updated_group.add_argument(
-        "-p", "--check-pm2-logs",
+        "--check-pm2-logs",
         dest="pm2_process",
         help="Restart the validator based on log patterns. The value passed "
              "to this arg is the name of the pm2 process to monitor.")
-    
+
+    parser.add_argument(
+        "--output-log-threshold",
+        type=float,
+        default=20,
+        help="The time in minutes after which to restart the process if the "
+             "pm2 out log file hasn't updated.")
+
     updated_group.add_argument(
-        "-u", "--check-updated",
+        "--check-updated",
         action="store_true",
         help="Restart the validator when the updated value is high.")
 
     parser.add_argument(
-        "-t", "--updated-threshold",
+        "--updated-threshold",
         type=float,
         default=3,
         help="The multiplier on the subnet's tempo value used to calculate "
@@ -105,7 +113,7 @@ class ValidatorCheckerUpdated(ValidatorChecker):
             if self._check_for_restart:
                 # If the rizzo updated value is greater than the restart threshold
                 # the do a restart and set _check_for_restart to False.
-                bittensor.logging.info("Check for restart is True.")
+                bittensor.logging.info("Updated value check for restart is True.")
                 if rizzo_updated >= self._restart_threshold:
                     bittensor.logging.info(f"Updated value {rizzo_updated} "
                                            f">= {self._restart_threshold}")
@@ -119,7 +127,7 @@ class ValidatorCheckerUpdated(ValidatorChecker):
             else:
                 # If the rizzo updated value is less than the restart threshold
                 # then set _check_for_restart.
-                bittensor.logging.info("Check for restart is False.")
+                bittensor.logging.info("Updated value Check for restart is False.")
                 if rizzo_updated < self._restart_threshold:
                     bittensor.logging.info(f"Updated value {rizzo_updated} "
                                            f"< {self._restart_threshold}")
@@ -139,12 +147,12 @@ class ValidatorCheckerUpdated(ValidatorChecker):
             time.sleep(sleep_interval)
 
 
-class ValidatorCheckerPm2Logs(ValidatorChecker):
+class ValidatorCheckerPm2LogErrors(ValidatorChecker):
     _generic_patterns = [r"\[Errno 32\] Broken pipe"]
     _subnet_patterns = []
 
     def __init__(self, options):
-        super(ValidatorCheckerPm2Logs, self).__init__(options)
+        super(ValidatorCheckerPm2LogErrors, self).__init__(options)
 
         self._pm2_process = options.pm2_process
 
@@ -190,15 +198,70 @@ class ValidatorCheckerPm2Logs(ValidatorChecker):
             time.sleep(sleep_time)
 
 
-class ValidatorCheckerPm2LogsSn34(ValidatorCheckerPm2Logs):
+class ValidatorCheckerPm2LogErrorsSn34(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"Handshake status 502 Bad Gateway"]
 
 
-class ValidatorCheckerPm2LogsSn18(ValidatorCheckerPm2Logs):
+class ValidatorCheckerPm2LogErrorsSn18(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"asyncio.exceptions.CancelledError"]
 
 
+class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
+
+    def __init__(self, options):
+        super(ValidatorCheckerPm2StoppedLogs, self).__init__(options)
+
+        self._pm2_process = options.pm2_process
+        self._restart_threshold = options.output_log_threshold * 60
+
+        self._run()
+
+    def _run(self):
+        bittensor.logging.info("Checking for stopped logs")
+
+        process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
+        pm2_output = json.loads(process.stdout)
+        for pm2_process in pm2_output:
+            if pm2_process["name"] == self._pm2_process:
+                log_file =  pm2_process['pm2_env']['pm_out_log_path']
+                break
+
+        bittensor.logging.info(f"Log file: {log_file}")
+
+        while True:
+            log_file_mtime = int(os.path.getmtime(log_file))
+            current_time = int(time.time())
+            log_file_ctime = time.ctime(log_file_mtime)
+            current_ctime = time.ctime(current_time)
+            bittensor.logging.info("")
+            bittensor.logging.info(f"Log file last modified: {log_file_ctime}")
+            bittensor.logging.info(f"Current time: {current_ctime}")
+
+            time_diff = current_time - log_file_mtime
+            if time_diff >= self._restart_threshold:
+                bittensor.logging.info(f"Time difference {time_diff} seconds "
+                                        f">= {self._restart_threshold} seconds")
+                self._restarter.do_restart()
+            else:
+                bittensor.logging.info(f"Time difference {time_diff} seconds "
+                                        f"< {self._restart_threshold} seconds")
+                bittensor.logging.info("Doing nothing.")
+
+            seconds_until_threshold = \
+                (self._restart_threshold - time_diff)
+            sleep_interval = (seconds_until_threshold
+                              if seconds_until_threshold > 0
+                              else self._restart_threshold)
+            bittensor.logging.info(f"Sleeping for {sleep_interval} seconds.")
+            time.sleep(sleep_interval)
+
+
 class ValidatorRestarterScript:
+    _discord_monitor_url = (
+    "https://discord.com/api/webhooks/1307044814348488704/"
+    "uYEDTqa89CI-NPau5zDyET_JTGt1r2j1u3ARvSEVCKP7-nnOfvCoUoEKwdZCLoiXKsjV"
+    )
+
     def __init__(self, options):
         self._netuid = options.netuid
         self._restart_script =  os.path.expanduser(options.restart_script)
@@ -218,6 +281,8 @@ class ValidatorRestarterScript:
         self._do_restart()
 
     def _do_restart(self):
+        script_name =  os.path.basename(__file__)
+
         bittensor.logging.info(f"Restarting subnet {self._netuid}.")
         bittensor.logging.info(f"Running script: {self._restart_script}")
         if self._restart_venv:
@@ -232,10 +297,11 @@ class ValidatorRestarterScript:
         with open(restart_script, "w") as fd:
             # TODO - This could probably be cleaned up a little
             if self._restart_venv:
+                venv_activate = os.path.join(self._restart_venv, "bin/activate")
                 fd.write("#!/bin/bash\n"
                             "\n"
                             "deactivate\n"
-                            f"source {self._restart_venv}/bin/activate\n"
+                            f"source {venv_activate}\n"
                             f"{self._restart_script}\n")
             else:
                 fd.write("#!/bin/bash\n"
@@ -246,23 +312,40 @@ class ValidatorRestarterScript:
 
         restart_cmd_str = " ".join(restart_cmd)
         bittensor.logging.info(f"Running command: '{restart_cmd_str}'")
-        process = subprocess.Popen(
-            restart_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-        os.unlink(restart_script)
+        process = subprocess.run(restart_cmd)
 
         if process.returncode:
-            stderr = stderr.decode()
             bittensor.logging.error(
                 f"'{restart_cmd_str}' command failed with return code "
-                f"{process.returncode}. Standard Error:\n{stderr}")
+                f"{process.returncode}.")
+            self._send_monitor_notification(
+                f"{script_name}: Failed to restart subnet {self._netuid}")
             return False
         
-        stdout = stdout.decode()
-        bittensor.logging.info(f"Restart command Standard Output:\n{stdout}")
+        os.unlink(restart_script)
         bittensor.logging.info(f"Subnet '{self._netuid}' "
                                "successfully restarted.")
+        self._send_monitor_notification(
+            f"{script_name}: Successfully restarted on subnet {self._netuid}")
+
         return True
+
+    def _send_monitor_notification(self, message):
+        payload = json.dumps({"content": message})
+        monitor_cmd = [
+            "curl", "-H", "Content-Type: application/json",
+            "-d", payload, self._discord_monitor_url
+        ]
+        monitor_cmd_str = " ".join(monitor_cmd)
+        bittensor.logging.info(f"Running command: '{monitor_cmd_str}'")
+        process = subprocess.run(monitor_cmd)
+
+        if process.returncode:
+            bittensor.logging.error(
+                f"'{monitor_cmd_str}' command failed with return code "
+                f"{process.returncode}.")
+        else:
+            bittensor.logging.info("Monitor notification successfully sent.")
 
 
 # TODO - Implement this
@@ -272,8 +355,8 @@ class ValidatorRestarterDocker:
 
 # TODO - This can be done better
 PM2_LOGS_VALIDATORS_DICT = {
-    34: ValidatorCheckerPm2LogsSn34,
-    18: ValidatorCheckerPm2LogsSn18
+    34: ValidatorCheckerPm2LogErrorsSn34,
+    18: ValidatorCheckerPm2LogErrorsSn18
 }
 
 
@@ -287,9 +370,11 @@ def main():
         ValidatorCheckerUpdated(options)
     #if options.pm2_process:
     else:
+        # ValidatorCheckerPm2StoppedLogs(options)
+        # return
         # TODO - This can be done better
         checker_class = PM2_LOGS_VALIDATORS_DICT.get(
-            options.netuid, ValidatorCheckerPm2Logs)
+            options.netuid, ValidatorCheckerPm2LogErrors)
         checker_class(options)
 
 
