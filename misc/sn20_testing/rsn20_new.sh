@@ -7,6 +7,10 @@ pm2 delete all
 # cd to folder
 cd ~/.bittensor/subnets/bitagent_subnet
 
+# pull latest from git repo
+git fetch
+git pull
+
 # install dependencies
 python3 -m pip install -e .
 
