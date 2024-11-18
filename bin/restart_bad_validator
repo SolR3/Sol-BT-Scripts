@@ -5,6 +5,7 @@ import bittensor
 
 # standard imports
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import pty
@@ -30,13 +31,12 @@ def _parse_args():
 
     parser.add_argument(
         "--restart-venv",
+        required=True,
         help="The restart venv path.")
 
-    updated_group = parser.add_mutually_exclusive_group(required=True)
-
-    updated_group.add_argument(
-        "--check-pm2-logs",
-        dest="pm2_process",
+    parser.add_argument(
+        "--pm2-process",
+        required=True,
         help="Restart the validator based on log patterns. The value passed "
              "to this arg is the name of the pm2 process to monitor.")
 
@@ -47,11 +47,6 @@ def _parse_args():
         help="The time in minutes after which to restart the process if the "
              "pm2 out log file hasn't updated.")
 
-    updated_group.add_argument(
-        "--check-updated",
-        action="store_true",
-        help="Restart the validator when the updated value is high.")
-
     parser.add_argument(
         "--updated-threshold",
         type=float,
@@ -61,8 +56,6 @@ def _parse_args():
              "For example, if this value is 3, then the validator will be "
              "restarted if its Updated value is greater than "
              "(subnet_tempo * 3).")
-    
-    
 
     return parser.parse_args()
 
@@ -70,21 +63,30 @@ def _parse_args():
 class ValidatorChecker:
     def __init__(self, options):
         self._netuid = options.netuid
-        self._restarter = options.restarter
+        self._restarter = options.restarter_class(self, options)
 
-        sleep_time = 15
-        bittensor.logging.info(f"Sleeping {sleep_time} seconds in case the "
-                               "validator process is just starting.")
-        time.sleep(sleep_time)
-        bittensor.logging.info(f"Running Auto Restarter on subnet {self._netuid}")
+        self._init_setup(options)
+
+        self._run()
+    
+    def _log_info(self, message):
+        bittensor.logging.info(f"{self.log_prefix}: {message}")
+
+    def _log_error(self, message):
+        bittensor.logging.error(f"{self.log_prefix}: {message}")
+
+    def _init_setup(self, options):
+        raise NotImplementedError("Must be implemented in subclasses.")
+
+    def _run(self):
+        raise NotImplementedError("Must be implemented in subclasses.")
 
 
 class ValidatorCheckerUpdated(ValidatorChecker):
+    log_prefix = "CHECK UPDATED"
     _rizzo_hotkey = "5F2CsUDVbRbVMXTh9fAzF9GacjVX7UapvRxidrxe7z8BYckQ"
 
-    def __init__(self, options):
-        super(ValidatorCheckerUpdated, self).__init__(options)
-
+    def _init_setup(self, options):
         self._updated_threshold = options.updated_threshold
         # Start false in case this is added after a manual restart
         # but before it started setting weights again
@@ -99,67 +101,66 @@ class ValidatorCheckerUpdated(ValidatorChecker):
         metagraph = self._subtensor.metagraph(netuid=self._netuid)
         self._rizzo_uid = metagraph.hotkeys.index(self._rizzo_hotkey)
 
-        self._run()
-
     def _run(self):
-        bittensor.logging.info("Checking for high Updated values")
+        self._log_info("")
+        self._log_info("Checking for high Updated values.")
+        self._log_info("")
 
         while True:
             rizzo_updated = self._subtensor.blocks_since_last_update(
                     netuid=self._netuid, uid=self._rizzo_uid)
-            bittensor.logging.info("")
-            bittensor.logging.info(f"Rizzo Updated is {rizzo_updated} blocks.")
+            self._log_info("")
+            self._log_info(f"Rizzo Updated is {rizzo_updated} blocks.")
 
             if self._check_for_restart:
                 # If the rizzo updated value is greater than the restart threshold
                 # the do a restart and set _check_for_restart to False.
-                bittensor.logging.info("Updated value check for restart is True.")
+                self._log_info("Updated value check for restart is True.")
                 if rizzo_updated >= self._restart_threshold:
-                    bittensor.logging.info(f"Updated value {rizzo_updated} "
-                                           f">= {self._restart_threshold}")
+                    self._log_info(f"Updated value {rizzo_updated} "
+                                   f">= {self._restart_threshold}")
                     self._restarter.do_restart()
-                    bittensor.logging.info("Setting check for restart to False.")
+                    self._log_info("Setting check for restart to False.")
                     self._check_for_restart = False
                 else:
-                    bittensor.logging.info(f"Updated value {rizzo_updated} "
-                                           f"< {self._restart_threshold}")
-                    bittensor.logging.info("Doing nothing.")
+                    self._log_info(f"Updated value {rizzo_updated} "
+                                   f"< {self._restart_threshold}")
+                    self._log_info("Doing nothing.")
             else:
                 # If the rizzo updated value is less than the restart threshold
                 # then set _check_for_restart.
-                bittensor.logging.info("Updated value Check for restart is False.")
+                self._log_info("Updated value Check for restart is False.")
                 if rizzo_updated < self._restart_threshold:
-                    bittensor.logging.info(f"Updated value {rizzo_updated} "
-                                           f"< {self._restart_threshold}")
-                    bittensor.logging.info("Setting check for restart to True.")
+                    self._log_info(f"Updated value {rizzo_updated} "
+                                   f"< {self._restart_threshold}")
+                    self._log_info("Setting check for restart to True.")
                     self._check_for_restart = True
                 else:
-                    bittensor.logging.info(f"Updated value {rizzo_updated} "
-                                           f">= {self._restart_threshold}")
-                    bittensor.logging.info("Doing nothing.")
+                    self._log_info(f"Updated value {rizzo_updated} "
+                                   f">= {self._restart_threshold}")
+                    self._log_info("Doing nothing.")
 
             seconds_until_threshold = \
                 (self._restart_threshold - rizzo_updated) * 12
             sleep_interval = (seconds_until_threshold
                               if seconds_until_threshold > 0
                               else self._subnet_tempo * 12)
-            bittensor.logging.info(f"Sleeping for {sleep_interval} seconds.")
+            self._log_info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
 
 
 class ValidatorCheckerPm2LogErrors(ValidatorChecker):
+    log_prefix = "CHECK LOG ERRORS"
     _generic_patterns = [r"\[Errno 32\] Broken pipe"]
     _subnet_patterns = []
 
-    def __init__(self, options):
-        super(ValidatorCheckerPm2LogErrors, self).__init__(options)
-
+    def _init_setup(self, options):
         self._pm2_process = options.pm2_process
 
-        self._run()
-
     def _run(self):
-        bittensor.logging.info("Checking for log patterns")
+        self._log_info("")
+        self._log_info("Checking for log patterns.")
+        self._log_info("")
 
         log_regexes = []
         for log_pattern in self._generic_patterns + self._subnet_patterns:
@@ -168,7 +169,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
         command_str = " ".join(command)
 
         while True:
-            bittensor.logging.info(f"Launching \"{command_str}\" process")
+            self._log_info(f"Launching \"{command_str}\" process")
 
             mfd, sfd = pty.openpty()
             process = subprocess.Popen(
@@ -180,21 +181,21 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                     line = master.readline()
                 except:
                     # The process exited.
-                    bittensor.logging.info("Process exited")
+                    self._log_info("Process exited")
                     break
                 else:
                     for log_regex in log_regexes:
                         if log_regex.search(line):
-                            bittensor.logging.info(
+                            self._log_info(
                                 "Log line matches a restart pattern:\n"
                                 f"{line}\n")
                             self._restarter.do_restart()
                             break
-            bittensor.logging.info("Killing process")
+            self._log_info("Killing process")
             process.kill()
             master.close()
             sleep_time = 15
-            bittensor.logging.info(f"Sleeping {sleep_time} seconds")
+            self._log_info(f"Sleeping {sleep_time} seconds")
             time.sleep(sleep_time)
 
 
@@ -207,17 +208,16 @@ class ValidatorCheckerPm2LogErrorsSn18(ValidatorCheckerPm2LogErrors):
 
 
 class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
+    log_prefix = "CHECK LOGS STOPPED"
 
-    def __init__(self, options):
-        super(ValidatorCheckerPm2StoppedLogs, self).__init__(options)
-
+    def _init_setup(self, options):
         self._pm2_process = options.pm2_process
         self._restart_threshold = options.output_log_threshold * 60
 
-        self._run()
-
     def _run(self):
-        bittensor.logging.info("Checking for stopped logs")
+        self._log_info("")
+        self._log_info("Checking for stopped logs.")
+        self._log_info("")
 
         process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
         pm2_output = json.loads(process.stdout)
@@ -226,43 +226,44 @@ class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
                 log_file =  pm2_process['pm2_env']['pm_out_log_path']
                 break
 
-        bittensor.logging.info(f"Log file: {log_file}")
+        self._log_info(f"Log file: {log_file}")
 
         while True:
             log_file_mtime = int(os.path.getmtime(log_file))
             current_time = int(time.time())
             log_file_ctime = time.ctime(log_file_mtime)
             current_ctime = time.ctime(current_time)
-            bittensor.logging.info("")
-            bittensor.logging.info(f"Log file last modified: {log_file_ctime}")
-            bittensor.logging.info(f"Current time: {current_ctime}")
+            self._log_info("")
+            self._log_info(f"Log file last modified: {log_file_ctime}")
+            self._log_info(f"Current time: {current_ctime}")
 
             time_diff = current_time - log_file_mtime
             if time_diff >= self._restart_threshold:
-                bittensor.logging.info(f"Time difference {time_diff} seconds "
-                                        f">= {self._restart_threshold} seconds")
+                self._log_info(f"Time difference {time_diff} seconds "
+                               f">= {self._restart_threshold} seconds")
                 self._restarter.do_restart()
             else:
-                bittensor.logging.info(f"Time difference {time_diff} seconds "
-                                        f"< {self._restart_threshold} seconds")
-                bittensor.logging.info("Doing nothing.")
+                self._log_info(f"Time difference {time_diff} seconds "
+                               f"< {self._restart_threshold} seconds")
+                self._log_info("Doing nothing.")
 
             seconds_until_threshold = \
                 (self._restart_threshold - time_diff)
             sleep_interval = (seconds_until_threshold
                               if seconds_until_threshold > 0
                               else self._restart_threshold)
-            bittensor.logging.info(f"Sleeping for {sleep_interval} seconds.")
+            self._log_info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
 
 
-class ValidatorRestarterScript:
+class ValidatorRestarterRsnScript:
     _discord_monitor_url = (
     "https://discord.com/api/webhooks/1307044814348488704/"
     "uYEDTqa89CI-NPau5zDyET_JTGt1r2j1u3ARvSEVCKP7-nnOfvCoUoEKwdZCLoiXKsjV"
     )
 
-    def __init__(self, options):
+    def __init__(self, checker_obj, options):
+        self._checker_obj = checker_obj
         self._netuid = options.netuid
         self._restart_script =  os.path.expanduser(options.restart_script)
         self._restart_venv = (
@@ -276,6 +277,12 @@ class ValidatorRestarterScript:
             if os.path.isfile(restart_file_path):
                 os.unlink(restart_file_path)
 
+    def _log_info(self, message):
+        bittensor.logging.info(f"{self._checker_obj.log_prefix}: {message}")
+
+    def _log_error(self, message):
+        bittensor.logging.error(f"{self._checker_obj.log_prefix}: {message}")
+
     def do_restart(self):
         # TODO: acquire threading lock
         self._do_restart()
@@ -283,17 +290,17 @@ class ValidatorRestarterScript:
     def _do_restart(self):
         script_name =  os.path.basename(__file__)
 
-        bittensor.logging.info(f"Restarting subnet {self._netuid}.")
-        bittensor.logging.info(f"Running script: {self._restart_script}")
+        self._log_info(f"Restarting subnet {self._netuid}.")
+        self._log_info(f"Running script: {self._restart_script}")
         if self._restart_venv:
-            bittensor.logging.info(f"Running in venv: {self._restart_venv}")
+            self._log_info(f"Running in venv: {self._restart_venv}")
 
         fd, restart_script = tempfile.mkstemp(dir=self._restart_dir,
             prefix = f"restart_{self._netuid}_", suffix=".sh")
         os.close(fd)
         os.chmod(restart_script, 0o700)
 
-        bittensor.logging.info(f"Packaging venv and script into {restart_script}")
+        self._log_info(f"Packaging venv and script into {restart_script}")
         with open(restart_script, "w") as fd:
             # TODO - This could probably be cleaned up a little
             if self._restart_venv:
@@ -311,11 +318,11 @@ class ValidatorRestarterScript:
         restart_cmd = [restart_script]
 
         restart_cmd_str = " ".join(restart_cmd)
-        bittensor.logging.info(f"Running command: '{restart_cmd_str}'")
+        self._log_info(f"Running command: '{restart_cmd_str}'")
         process = subprocess.run(restart_cmd)
 
         if process.returncode:
-            bittensor.logging.error(
+            self._log_error(
                 f"'{restart_cmd_str}' command failed with return code "
                 f"{process.returncode}.")
             self._send_monitor_notification(
@@ -323,8 +330,7 @@ class ValidatorRestarterScript:
             return False
         
         os.unlink(restart_script)
-        bittensor.logging.info(f"Subnet '{self._netuid}' "
-                               "successfully restarted.")
+        self._log_info(f"Subnet '{self._netuid}' successfully restarted.")
         self._send_monitor_notification(
             f"{script_name}: Successfully restarted on subnet {self._netuid}")
 
@@ -337,15 +343,15 @@ class ValidatorRestarterScript:
             "-d", payload, self._discord_monitor_url
         ]
         monitor_cmd_str = " ".join(monitor_cmd)
-        bittensor.logging.info(f"Running command: '{monitor_cmd_str}'")
+        self._log_info(f"Running command: '{monitor_cmd_str}'")
         process = subprocess.run(monitor_cmd)
 
         if process.returncode:
-            bittensor.logging.error(
+            self._log_error(
                 f"'{monitor_cmd_str}' command failed with return code "
                 f"{process.returncode}.")
         else:
-            bittensor.logging.info("Monitor notification successfully sent.")
+            self._log_info("Monitor notification successfully sent.")
 
 
 # TODO - Implement this
@@ -360,22 +366,56 @@ PM2_LOGS_VALIDATORS_DICT = {
 }
 
 
+def _run_checker(checker_class, options):
+    checker_class(options)
+
+
 def main():
     bittensor.logging.enable_debug()
-    bittensor.logging.info("")
-    bittensor.logging.info("STARTING RESTART BAD VALIDATOR PROCESS")
     options = _parse_args()
-    options.restarter = ValidatorRestarterScript(options)
-    if options.check_updated:
-        ValidatorCheckerUpdated(options)
-    #if options.pm2_process:
-    else:
-        # ValidatorCheckerPm2StoppedLogs(options)
-        # return
-        # TODO - This can be done better
-        checker_class = PM2_LOGS_VALIDATORS_DICT.get(
-            options.netuid, ValidatorCheckerPm2LogErrors)
-        checker_class(options)
+
+    sleep_time = 15
+    script_name =  os.path.basename(__file__)
+    bittensor.logging.info("")
+    bittensor.logging.info(f"Starting {script_name} on subnet {options.netuid}")
+    bittensor.logging.info(f"Sleeping {sleep_time} seconds in case the "
+                            "validator process is just starting.")
+    bittensor.logging.info("")
+    time.sleep(sleep_time)
+
+    log_checker_class = PM2_LOGS_VALIDATORS_DICT.get(
+        options.netuid, ValidatorCheckerPm2LogErrors)
+
+    options.restarter_class = ValidatorRestarterRsnScript
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        bittensor.logging.info("")
+        bittensor.logging.info("================================")
+        bittensor.logging.info("Running Updated value checker.")
+        bittensor.logging.info("================================")
+        bittensor.logging.info("")
+        executor.submit(_run_checker, ValidatorCheckerUpdated, options)
+
+        bittensor.logging.info(f"Sleeping {sleep_time} seconds before "
+                                "starting the next one.")
+        time.sleep(sleep_time)
+
+        bittensor.logging.info("")
+        bittensor.logging.info("================================")
+        bittensor.logging.info("Running log errors checker.")
+        bittensor.logging.info("================================")
+        bittensor.logging.info("")
+        executor.submit(_run_checker, log_checker_class, options)
+
+        bittensor.logging.info(f"Sleeping {sleep_time} seconds before "
+                                "starting the next one.")
+        time.sleep(sleep_time)
+
+        bittensor.logging.info("")
+        bittensor.logging.info("================================")
+        bittensor.logging.info("Running stopped logs checker.")
+        bittensor.logging.info("================================")
+        bittensor.logging.info("")
+        executor.submit(_run_checker, ValidatorCheckerPm2StoppedLogs, options)
 
 
 if __name__ == "__main__":
