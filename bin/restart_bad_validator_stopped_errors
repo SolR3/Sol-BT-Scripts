@@ -166,7 +166,6 @@ class ValidatorRestarterRsnScript:
         return True
 
     def _send_monitor_notification(self, message):
-        return # todo - remove
         payload = json.dumps({"content": message})
         monitor_cmd = [
             "curl", "-H", "Content-Type: application/json",

@@ -31,7 +31,6 @@ def _parse_args():
 
     parser.add_argument(
         "--restart-venv",
-        required=True,
         help="The restart venv path.")
 
     parser.add_argument(
@@ -295,27 +294,24 @@ class ValidatorRestarterRsnScript:
         if self._restart_venv:
             self._log_info(f"Running in venv: {self._restart_venv}")
 
-        fd, restart_script = tempfile.mkstemp(dir=self._restart_dir,
-            prefix = f"restart_{self._netuid}_", suffix=".sh")
-        os.close(fd)
-        os.chmod(restart_script, 0o700)
+            fd, restart_script = tempfile.mkstemp(dir=self._restart_dir,
+                prefix = f"restart_{self._netuid}_", suffix=".sh")
+            os.close(fd)
+            os.chmod(restart_script, 0o700)
 
-        self._log_info(f"Packaging venv and script into {restart_script}")
-        with open(restart_script, "w") as fd:
-            # TODO - This could probably be cleaned up a little
-            if self._restart_venv:
+            self._log_info(f"Packaging venv and script into {restart_script}")
+            with open(restart_script, "w") as fd:
+                # TODO - This could probably be cleaned up a little
                 venv_activate = os.path.join(self._restart_venv, "bin/activate")
                 fd.write("#!/bin/bash\n"
                             "\n"
                             "deactivate\n"
                             f"source {venv_activate}\n"
                             f"{self._restart_script}\n")
-            else:
-                fd.write("#!/bin/bash\n"
-                        "\n"
-                        "deactivate\n"
-                        f"{self._restart_script}\n")
-        restart_cmd = [restart_script]
+            restart_cmd = [restart_script]
+        else:
+            restart_cmd = [self._restart_script]
+            restart_script = None
 
         restart_cmd_str = " ".join(restart_cmd)
         self._log_info(f"Running command: '{restart_cmd_str}'")
@@ -329,7 +325,8 @@ class ValidatorRestarterRsnScript:
                 f"{script_name}: Failed to restart subnet {self._netuid}")
             return False
         
-        os.unlink(restart_script)
+        if restart_script:
+            os.unlink(restart_script)
         self._log_info(f"Subnet '{self._netuid}' successfully restarted.")
         self._send_monitor_notification(
             f"{script_name}: Successfully restarted on subnet {self._netuid}")
