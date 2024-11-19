@@ -34,7 +34,7 @@ def _parse_args():
     parser.add_argument(
         "--error-log-threshold",
         type=float,
-        default=20,
+        default=30,
         help="The time in minutes after which to restart the process if the "
              "pm2 error log file hasn't updated.")
 
