@@ -118,7 +118,7 @@ class ValidatorCheckerUpdated(ValidatorChecker):
                 if rizzo_updated >= self._restart_threshold:
                     self._log_info(f"Updated value {rizzo_updated} "
                                    f">= {self._restart_threshold}")
-                    self._restarter.do_restart()
+                    self._restarter.do_restart(f"Updated value is {rizzo_updated}")
                     self._log_info("Setting check for restart to False.")
                     self._check_for_restart = False
                 else:
@@ -188,7 +188,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                             self._log_info(
                                 "Log line matches a restart pattern:\n"
                                 f"{line}\n")
-                            self._restarter.do_restart()
+                            self._restarter.do_restart(f"Log output matches a restart pattern: {line}")
                             break
             self._log_info("Killing process")
             process.kill()
@@ -240,7 +240,8 @@ class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
             if time_diff >= self._restart_threshold:
                 self._log_info(f"Time difference {time_diff} seconds "
                                f">= {self._restart_threshold} seconds")
-                self._restarter.do_restart()
+                log_minutes = time_diff / 60
+                self._restarter.do_restart(f"No log output in {log_minutes:.1f} minutes.")
             else:
                 self._log_info(f"Time difference {time_diff} seconds "
                                f"< {self._restart_threshold} seconds")
@@ -282,14 +283,14 @@ class ValidatorRestarterRsnScript:
     def _log_error(self, message):
         bittensor.logging.error(f"{self._checker_obj.log_prefix}: {message}")
 
-    def do_restart(self):
+    def do_restart(self, description):
         # TODO: acquire threading lock
-        self._do_restart()
+        self._do_restart(description)
 
-    def _do_restart(self):
+    def _do_restart(self, description):
         script_name =  os.path.basename(__file__)
 
-        self._log_info(f"Restarting subnet {self._netuid}.")
+        self._log_info(f"Restarting subnet {self._netuid}: {description}.")
         self._log_info(f"Running script: {self._restart_script}")
         if self._restart_venv:
             self._log_info(f"Running in venv: {self._restart_venv}")
@@ -322,14 +323,14 @@ class ValidatorRestarterRsnScript:
                 f"'{restart_cmd_str}' command failed with return code "
                 f"{process.returncode}.")
             self._send_monitor_notification(
-                f"{script_name}: Failed to restart subnet {self._netuid}")
+                f"{script_name}: Failed to restart subnet {self._netuid} - {description}")
             return False
         
         if restart_script:
             os.unlink(restart_script)
         self._log_info(f"Subnet '{self._netuid}' successfully restarted.")
         self._send_monitor_notification(
-            f"{script_name}: Successfully restarted on subnet {self._netuid}")
+            f"{script_name}: Successfully restarted on subnet {self._netuid} - {description}")
 
         return True
 

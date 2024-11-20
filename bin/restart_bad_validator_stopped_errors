@@ -96,7 +96,8 @@ class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
             if time_diff >= self._restart_threshold:
                 self._log_info(f"Time difference {time_diff} seconds "
                                f">= {self._restart_threshold} seconds")
-                self._restarter.do_restart()
+                log_minutes = time_diff / 60
+                self._restarter.do_restart(f"No log output in {log_minutes:.1f} minutes.")
             else:
                 self._log_info(f"Time difference {time_diff} seconds "
                                f"< {self._restart_threshold} seconds")
@@ -135,14 +136,14 @@ class ValidatorRestarterRsnScript:
     def _log_error(self, message):
         bittensor.logging.error(f"{self._checker_obj.log_prefix}: {message}")
 
-    def do_restart(self):
+    def do_restart(self, description):
         # TODO: acquire threading lock
-        self._do_restart()
+        self._do_restart(description)
 
-    def _do_restart(self):
-        script_name =  os.path.basename(__file__)
+    def _do_restart(self, description):
+        script_name =  "restart_bad_validator"
 
-        self._log_info(f"Restarting subnet {self._netuid}.")
+        self._log_info(f"Restarting subnet {self._netuid}: {description}.")
         self._log_info(f"Running script: {self._restart_script}")
 
         restart_cmd = [self._restart_script]
@@ -156,12 +157,12 @@ class ValidatorRestarterRsnScript:
                 f"'{restart_cmd_str}' command failed with return code "
                 f"{process.returncode}.")
             self._send_monitor_notification(
-                f"{script_name}: Failed to restart subnet {self._netuid}")
+                f"{script_name}: Failed to restart subnet {self._netuid} - {description}")
             return False
         
         self._log_info(f"Subnet '{self._netuid}' successfully restarted.")
         self._send_monitor_notification(
-            f"{script_name}: Successfully restarted on subnet {self._netuid}")
+            f"{script_name}: Successfully restarted on subnet {self._netuid} - {description}")
 
         return True
 
