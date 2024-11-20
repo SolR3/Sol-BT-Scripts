@@ -185,7 +185,11 @@ class ValidatorRestarterRsnScript:
 
 
 def main():
-    bittensor.logging.enable_debug()
+    try:
+        bittensor.logging.enable_debug()
+    except AttributeError:
+        bittensor.logging.set_debug(True)
+
     options = _parse_args()
     options.restarter_class = ValidatorRestarterRsnScript
 

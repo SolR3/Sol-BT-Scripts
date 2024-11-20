@@ -83,6 +83,7 @@ class ValidatorChecker:
 
 class ValidatorCheckerUpdated(ValidatorChecker):
     log_prefix = "CHECK UPDATED"
+    _subnet_tempo = 360
     _rizzo_hotkey = "5F2CsUDVbRbVMXTh9fAzF9GacjVX7UapvRxidrxe7z8BYckQ"
 
     def _init_setup(self, options):
@@ -93,8 +94,6 @@ class ValidatorCheckerUpdated(ValidatorChecker):
         self._check_for_restart = False
 
         self._subtensor = bittensor.subtensor()
-        self._subnet_tempo = self._subtensor.get_subnet_hyperparameters(
-            self._netuid).tempo
         self._restart_threshold = self._subnet_tempo * self._updated_threshold
 
         metagraph = self._subtensor.metagraph(netuid=self._netuid)
@@ -372,7 +371,11 @@ def _run_checker(checker_class, options):
 
 
 def main():
-    bittensor.logging.enable_debug()
+    try:
+        bittensor.logging.enable_debug()
+    except AttributeError:
+        bittensor.logging.set_debug(True)
+
     options = _parse_args()
 
     sleep_time = 15
