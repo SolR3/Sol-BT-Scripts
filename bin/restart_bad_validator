@@ -184,11 +184,14 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                     break
                 else:
                     for log_regex in log_regexes:
-                        if log_regex.search(line):
+                        match = log_regex.search(line)
+                        if match:
+                            pattern = match.group()
                             self._log_info(
-                                "Log line matches a restart pattern:\n"
+                                f"Log line matches a restart pattern: \"{pattern}\"\n"
                                 f"{line}\n")
-                            self._restarter.do_restart(f"Log output matches a restart pattern: {line}")
+                            self._restarter.do_restart(
+                                f"Log output matches a restart pattern: \"{pattern}\"")
                             break
             self._log_info("Killing process")
             process.kill()
