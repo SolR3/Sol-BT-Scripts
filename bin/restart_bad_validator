@@ -200,9 +200,11 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
             time.sleep(sleep_time)
 
 
+class ValidatorCheckerPm2LogErrorsSn10(ValidatorCheckerPm2LogErrors):
+    _subnet_patterns = [r"Error during validation"]
+
 class ValidatorCheckerPm2LogErrorsSn34(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"Handshake status 502 Bad Gateway"]
-
 
 class ValidatorCheckerPm2LogErrorsSn18(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"asyncio.exceptions.CancelledError"]
@@ -361,8 +363,9 @@ class ValidatorRestarterDocker:
 
 # TODO - This can be done better
 PM2_LOGS_VALIDATORS_DICT = {
+    10: ValidatorCheckerPm2LogErrorsSn10,
+    18: ValidatorCheckerPm2LogErrorsSn18,
     34: ValidatorCheckerPm2LogErrorsSn34,
-    18: ValidatorCheckerPm2LogErrorsSn18
 }
 
 
