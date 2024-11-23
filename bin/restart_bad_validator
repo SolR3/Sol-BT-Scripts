@@ -227,6 +227,12 @@ class ValidatorCheckerPm2LogErrorsSn34(ValidatorCheckerPm2LogErrors):
 class ValidatorCheckerPm2LogErrorsSn18(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"asyncio.exceptions.CancelledError"]
 
+class ValidatorCheckerPm2LogErrorsSn30(ValidatorCheckerPm2LogErrors):
+    _subnet_patterns = [r"asyncio.exceptions.CancelledError"]
+
+class ValidatorCheckerPm2LogErrorsSn43(ValidatorCheckerPm2LogErrors):
+    _subnet_patterns = [r"EOF occurred in violation of protocol"]
+
 
 class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
     log_prefix = "CHECK LOGS STOPPED"
@@ -392,6 +398,8 @@ PM2_LOGS_VALIDATORS_DICT = {
     10: ValidatorCheckerPm2LogErrorsSn10,
     18: ValidatorCheckerPm2LogErrorsSn18,
     34: ValidatorCheckerPm2LogErrorsSn34,
+    30: ValidatorCheckerPm2LogErrorsSn30,
+    43: ValidatorCheckerPm2LogErrorsSn43,
 }
 
 
