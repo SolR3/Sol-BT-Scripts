@@ -56,6 +56,13 @@ def _parse_args():
              "restarted if its Updated value is greater than "
              "(subnet_tempo * 3).")
 
+    parser.add_argument(
+        "-d", "--skip-discord-notify",
+        action="store_false",
+        dest="discord_notify",
+        help="When specified, this will skip sending the notification to the "
+             "discord monitor channel.")
+
     return parser.parse_args()
 
 
@@ -167,6 +174,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
         command_str = " ".join(command)
 
         while True:
+            skip_lines = 0
             self._log_info(f"Launching \"{command_str}\" process")
 
             mfd, sfd = pty.openpty()
@@ -182,6 +190,12 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                     self._log_info("Process exited")
                     break
                 else:
+                    if skip_lines > 0:
+                        skip_lines -= 1
+                        if skip_lines == 0:
+                            self._log_info("Restarting log patterns monitor.")
+                        continue
+
                     for log_regex in log_regexes:
                         match = log_regex.search(line)
                         if match:
@@ -191,6 +205,10 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                                 f"{line}\n")
                             self._restarter.do_restart(
                                 f"Log output matches a restart pattern: \"{pattern}\"")
+
+                            skip_lines = 100
+                            self._log_info(
+                                f"Skipping {skip_lines} log lines after restart.")
                             break
             self._log_info("Killing process")
             process.kill()
@@ -269,13 +287,16 @@ class ValidatorRestarterRsnScript:
     def __init__(self, checker_obj, options):
         self._checker_obj = checker_obj
         self._netuid = options.netuid
+        self._discord_notify = options.discord_notify
         self._restart_script =  os.path.expanduser(options.restart_script)
         self._restart_venv = (
             os.path.expanduser(options.restart_venv)
             if options.restart_venv else None)
+
         self._restart_dir = os.path.expanduser(
             f"~/restart_scripts_sn{options.netuid}")
         os.makedirs(self._restart_dir, exist_ok=True)
+
         for restart_file in os.listdir(self._restart_dir):
             restart_file_path = os.path.join(self._restart_dir, restart_file)
             if os.path.isfile(restart_file_path):
@@ -339,6 +360,10 @@ class ValidatorRestarterRsnScript:
         return True
 
     def _send_monitor_notification(self, message):
+        if not self._discord_notify:
+            self._log_info("Not sending discord monitor notification.")
+            return
+
         payload = json.dumps({"content": message})
         monitor_cmd = [
             "curl", "-H", "Content-Type: application/json",
@@ -349,11 +374,12 @@ class ValidatorRestarterRsnScript:
         process = subprocess.run(monitor_cmd)
 
         if process.returncode:
+            self._log_error("Failed to send discord monitor notification.")
             self._log_error(
                 f"'{monitor_cmd_str}' command failed with return code "
                 f"{process.returncode}.")
         else:
-            self._log_info("Monitor notification successfully sent.")
+            self._log_info("Discord monitor notification successfully sent.")
 
 
 # TODO - Implement this
