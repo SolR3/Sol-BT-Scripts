@@ -57,7 +57,28 @@ def _parse_args():
              "(subnet_tempo * 3).")
 
     parser.add_argument(
-        "-d", "--skip-discord-notify",
+        "--skip-updated-check",
+        action="store_false",
+        dest="do_check_updated",
+        help="When specified, this will skip the checking of the Upadted "
+             "value.")
+    
+    parser.add_argument(
+        "--skip-log-errors-check",
+        action="store_false",
+        dest="do_check_errors",
+        help="When specified, this will skip the checking of the log output "
+             "for error patterns.")
+    
+    parser.add_argument(
+        "--skip-stopped-logs-check",
+        action="store_false",
+        dest="do_check_stopped_logs",
+        help="When specified, this will skip the checking whether the out log "
+             "file sotpped udpdating.")
+
+    parser.add_argument(
+        "--skip-discord-notify",
         action="store_false",
         dest="discord_notify",
         help="When specified, this will skip sending the notification to the "
@@ -429,34 +450,37 @@ def main():
 
     options.restarter_class = ValidatorRestarterRsnScript
     with ThreadPoolExecutor(max_workers=3) as executor:
-        bittensor.logging.info("")
-        bittensor.logging.info("================================")
-        bittensor.logging.info("Running Updated value checker.")
-        bittensor.logging.info("================================")
-        bittensor.logging.info("")
-        executor.submit(_run_checker, ValidatorCheckerUpdated, options)
+        if options.do_check_updated:
+            bittensor.logging.info("")
+            bittensor.logging.info("================================")
+            bittensor.logging.info("Running Updated value checker.")
+            bittensor.logging.info("================================")
+            bittensor.logging.info("")
+            executor.submit(_run_checker, ValidatorCheckerUpdated, options)
 
-        bittensor.logging.info(f"Sleeping {sleep_time} seconds before "
-                                "starting the next one.")
-        time.sleep(sleep_time)
+            bittensor.logging.info(f"Sleeping {sleep_time} seconds before "
+                                    "starting the next one.")
+            time.sleep(sleep_time)
 
-        bittensor.logging.info("")
-        bittensor.logging.info("================================")
-        bittensor.logging.info("Running log errors checker.")
-        bittensor.logging.info("================================")
-        bittensor.logging.info("")
-        executor.submit(_run_checker, log_checker_class, options)
+        if options.do_check_errors:
+            bittensor.logging.info("")
+            bittensor.logging.info("================================")
+            bittensor.logging.info("Running log errors checker.")
+            bittensor.logging.info("================================")
+            bittensor.logging.info("")
+            executor.submit(_run_checker, log_checker_class, options)
 
-        bittensor.logging.info(f"Sleeping {sleep_time} seconds before "
-                                "starting the next one.")
-        time.sleep(sleep_time)
+            bittensor.logging.info(f"Sleeping {sleep_time} seconds before "
+                                    "starting the next one.")
+            time.sleep(sleep_time)
 
-        bittensor.logging.info("")
-        bittensor.logging.info("================================")
-        bittensor.logging.info("Running stopped logs checker.")
-        bittensor.logging.info("================================")
-        bittensor.logging.info("")
-        executor.submit(_run_checker, ValidatorCheckerPm2StoppedLogs, options)
+        if options.do_check_stopped_logs:
+            bittensor.logging.info("")
+            bittensor.logging.info("================================")
+            bittensor.logging.info("Running stopped logs checker.")
+            bittensor.logging.info("================================")
+            bittensor.logging.info("")
+            executor.submit(_run_checker, ValidatorCheckerPm2StoppedLogs, options)
 
 
 if __name__ == "__main__":
