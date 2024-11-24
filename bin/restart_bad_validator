@@ -57,12 +57,12 @@ def _parse_args():
              "(subnet_tempo * 3).")
 
     parser.add_argument(
-        "--log-errors-skip-lines",
-        type=int,
-        default=100,
-        help="The number of log lines to skip after restarting a the validator "
-             "so it doesn't get restarted multiple times due to duplicate or "
-             "quickly recurring error patterns.")
+        "--log-errors-restart-wait-time",
+        type=float,
+        default=2,
+        help="The number of minutes to wait after restarting a the validator "
+             "due to a log patterns error so it doesn't get restarted multiple "
+             "times due to duplicate or quickly recurring error patterns.")
 
     parser.add_argument(
         "--skip-updated-check",
@@ -190,7 +190,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
 
     def _init_setup(self, options):
         self._pm2_process = options.pm2_process
-        self._log_errors_skip_lines = options.log_errors_skip_lines
+        self._restart_wait_time = options.log_errors_restart_wait_time
 
     def _run(self):
         self._log_info("")
@@ -204,7 +204,8 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
         command_str = " ".join(command)
 
         while True:
-            skip_lines = 0
+            restart_time = 0
+            restarted = True
             self._log_info(f"Launching \"{command_str}\" process")
 
             mfd, sfd = pty.openpty()
@@ -220,11 +221,11 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                     self._log_info("Process exited")
                     break
                 else:
-                    if skip_lines > 0:
-                        skip_lines -= 1
-                        if skip_lines == 0:
-                            self._log_info("Restarting log patterns monitor.")
-                        continue
+                    if not restarted:
+                        if time.time() < restart_time:
+                            continue
+                        restarted = True
+                        self._log_info("Restarting log patterns monitor.")
 
                     for log_regex in log_regexes:
                         match = log_regex.search(line)
@@ -236,9 +237,13 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                             self._restarter.do_restart(
                                 f"Log output matches a restart pattern: \"{pattern}\"")
 
-                            skip_lines = self._log_errors_skip_lines
+                            restart_time = (
+                                time.time() + (self._restart_wait_time * 60)
+                            )
+                            restarted = False
                             self._log_info(
-                                f"Skipping {skip_lines} log lines after restart.")
+                                f"Waiting {self._restart_wait_time} minutes "
+                                 "after restart.")
                             break
             self._log_info("Killing process")
             process.kill()
