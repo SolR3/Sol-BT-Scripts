@@ -256,6 +256,9 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
 class ValidatorCheckerPm2LogErrorsSn10(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"Error during validation"]
 
+class ValidatorCheckerPm2LogErrorsSn20(ValidatorCheckerPm2LogErrors):
+    _subnet_patterns = [r"Error in forward: Failed to get task after \d+ attempts"]
+
 class ValidatorCheckerPm2LogErrorsSn34(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"Handshake status 502 Bad Gateway"]
 
@@ -431,6 +434,7 @@ class ValidatorRestarterDocker:
 # TODO - This can be done better
 PM2_LOGS_VALIDATORS_DICT = {
     10: ValidatorCheckerPm2LogErrorsSn10,
+    20: ValidatorCheckerPm2LogErrorsSn20,
     18: ValidatorCheckerPm2LogErrorsSn18,
     34: ValidatorCheckerPm2LogErrorsSn34,
     30: ValidatorCheckerPm2LogErrorsSn30,
