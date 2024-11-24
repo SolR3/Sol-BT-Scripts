@@ -57,6 +57,14 @@ def _parse_args():
              "(subnet_tempo * 3).")
 
     parser.add_argument(
+        "--log-errors-skip-lines",
+        type=int,
+        default=100,
+        help="The number of log lines to skip after restarting a the validator "
+             "so it doesn't get restarted multiple times due to duplicate or "
+             "quickly recurring error patterns.")
+
+    parser.add_argument(
         "--skip-updated-check",
         action="store_false",
         dest="do_check_updated",
@@ -182,6 +190,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
 
     def _init_setup(self, options):
         self._pm2_process = options.pm2_process
+        self._log_errors_skip_lines = options.log_errors_skip_lines
 
     def _run(self):
         self._log_info("")
@@ -227,7 +236,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                             self._restarter.do_restart(
                                 f"Log output matches a restart pattern: \"{pattern}\"")
 
-                            skip_lines = 100
+                            skip_lines = self._log_errors_skip_lines
                             self._log_info(
                                 f"Skipping {skip_lines} log lines after restart.")
                             break
