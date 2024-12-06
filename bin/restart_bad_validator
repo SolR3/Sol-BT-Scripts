@@ -253,6 +253,9 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
             time.sleep(sleep_time)
 
 
+class ValidatorCheckerPm2LogErrorsSn1(ValidatorCheckerPm2LogErrors):
+    _subnet_patterns = [r"json\.decoder\.JSONDecodeError:"]
+
 class ValidatorCheckerPm2LogErrorsSn10(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"Error during validation"]
 
@@ -442,6 +445,7 @@ class ValidatorRestarterDocker:
 
 # TODO - This can be done better
 PM2_LOGS_VALIDATORS_DICT = {
+    1: ValidatorCheckerPm2LogErrorsSn1,
     10: ValidatorCheckerPm2LogErrorsSn10,
     18: ValidatorCheckerPm2LogErrorsSn18,
     20: ValidatorCheckerPm2LogErrorsSn20,
