@@ -12,12 +12,11 @@ sleep 5
 # 
 # This is the way the devs say to do it
 # 
+git pull
 
 # down existing validator services
 make validator-down
 make validator-pull
-
-git pull
 
 # restart validator
 make validator
