@@ -1,0 +1,3 @@
+
+# edit your .env.validator to add the following
+DATASET_SERVICE_BASE_URL=https://dojo-validator-api.tensorplex.ai
