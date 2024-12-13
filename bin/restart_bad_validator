@@ -264,6 +264,9 @@ class ValidatorCheckerPm2LogErrorsSn18(ValidatorCheckerPm2LogErrors):
 # class ValidatorCheckerPm2LogErrorsSn24(ValidatorCheckerPm2LogErrors):
 #     _subnet_patterns = [r"EOF occurred in violation of protocol"]
 
+class ValidatorCheckerPm2LogErrorsSn28(ValidatorCheckerPm2LogErrors):
+    _subnet_patterns = [r"Transaction has an ancient birth block"]
+
 class ValidatorCheckerPm2LogErrorsSn30(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"asyncio.exceptions.CancelledError"]
 
@@ -446,6 +449,7 @@ PM2_LOGS_VALIDATORS_DICT = {
     18: ValidatorCheckerPm2LogErrorsSn18,
     # 20: ValidatorCheckerPm2LogErrorsSn20,
     # 24: ValidatorCheckerPm2LogErrorsSn24,
+    28: ValidatorCheckerPm2LogErrorsSn28,
     30: ValidatorCheckerPm2LogErrorsSn30,
     34: ValidatorCheckerPm2LogErrorsSn34,
     38: ValidatorCheckerPm2LogErrorsSn38,
