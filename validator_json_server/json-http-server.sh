@@ -18,7 +18,7 @@ PASSWORD="TaR3a5hJa6Kt0R5"
 ufw allow $PORT1/tcp comment 'for serving the json file read by the huggingface page'
 
 # Start HTTP servers with basic authentication on the specified ports
-python3 ./json_http_server $PORT1 "$PATH_TO_BROWSE1" "$USERNAME" "$PASSWORD" &
+sudo python3 ./json_http_server $PORT1 "$PATH_TO_BROWSE1" "$USERNAME" "$PASSWORD" &
 PYTHON_PID=$!
 
 # Trap to close the port and terminate the Python process when stopping the script
