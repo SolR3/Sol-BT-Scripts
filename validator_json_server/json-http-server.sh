@@ -4,7 +4,7 @@
 # Courtesy of Gregbeard (Thank you Gregbeard!)
 # #############################################
 
-PORT1=8000
+PORT1=33392
 # PATH_TO_BROWSE1=/home/rizzo/.bittensor/scripts/Sol-BT-Scripts/misc/subnet_data_test
 # PATH_TO_BROWSE1=/home/bhorvat/bittensor/scripts/git_projects/Sol-BT-Scripts/misc/subnet_data_test
 PATH_TO_BROWSE1=~/.validator_data
