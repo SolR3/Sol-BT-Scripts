@@ -35,6 +35,7 @@ class AuthHandler(http.server.SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+
 def run_server(port, directory, username, password):
     handler = lambda *args, **kwargs: AuthHandler(
         *args, username=username, password=password, directory=directory, **kwargs
@@ -51,6 +52,7 @@ def run_server(port, directory, username, password):
         signal.signal(signal.SIGTERM, shutdown_server)
 
         httpd.serve_forever()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run HTTP server with basic authentication")
