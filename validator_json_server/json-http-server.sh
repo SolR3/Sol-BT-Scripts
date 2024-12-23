@@ -7,7 +7,7 @@
 PORT1=33392
 # PATH_TO_BROWSE1=/home/rizzo/.bittensor/scripts/Sol-BT-Scripts/misc/subnet_data_test
 # PATH_TO_BROWSE1=/home/bhorvat/bittensor/scripts/git_projects/Sol-BT-Scripts/misc/subnet_data_test
-PATH_TO_BROWSE1=~/.validator_data
+PATH_TO_BROWSE1=$2
 
 PUBLIC_IP=$(curl -4 icanhazip.com)
 
