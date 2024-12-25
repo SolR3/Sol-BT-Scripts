@@ -40,18 +40,26 @@ def _parse_args():
              "to this arg is the name of the pm2 process to monitor.")
 
     parser.add_argument(
-        "--output-log-threshold",
-        type=float,
-        default=30,
-        help="The time in minutes after which to restart the process if the "
-             "pm2 out log file hasn't updated.")
-
-    parser.add_argument(
         "--updated-threshold",
         type=int,
         default=1800,
         help="The Updated threshold value above which to restart the "
              "validator. This value is in blocks.")
+
+    parser.add_argument(
+        "--stopped-logs-threshold",
+        type=float,
+        default=30,
+        help="The time in minutes after which to restart the process if the "
+             "pm2 log file hasn't updated. This is usually the out log file "
+             "but the error log file can be monotored with the "
+             "--check-stopped-error-logs arg insetad.")
+
+    parser.add_argument(
+        "--check-stopped-error-logs",
+        action="store_true",
+        help="When specified, check the error log file instead of the out log file "
+             "for stopped log output.")
 
     parser.add_argument(
         "--log-errors-restart-wait-time",
@@ -288,7 +296,8 @@ class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
 
     def _init_setup(self, options):
         self._pm2_process = options.pm2_process
-        self._restart_threshold = options.output_log_threshold * 60
+        self._restart_threshold = int(round(options.stopped_logs_threshold * 60))
+        self._check_error_log_file = options.check_stopped_error_logs
 
     def _run(self):
         self._log_info("")
@@ -299,7 +308,11 @@ class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
         pm2_output = json.loads(process.stdout)
         for pm2_process in pm2_output:
             if pm2_process["name"] == self._pm2_process:
-                log_file =  pm2_process['pm2_env']['pm_out_log_path']
+                log_file_key = (
+                    "pm_err_log_path" if self._check_error_log_file
+                    else "pm_out_log_path"
+                )
+                log_file =  pm2_process["pm2_env"][log_file_key]
                 break
 
         self._log_info(f"Log file: {log_file}")
