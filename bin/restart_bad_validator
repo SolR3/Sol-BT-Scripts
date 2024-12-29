@@ -149,8 +149,14 @@ class ValidatorCheckerUpdated(ValidatorChecker):
         self._log_info("")
 
         while True:
-            rizzo_updated = self._subtensor.blocks_since_last_update(
-                    netuid=self._netuid, uid=self._rizzo_uid)
+            if hasattr(self._subtensor, "blocks_since_last_update"):
+                rizzo_updated = self._subtensor.blocks_since_last_update(
+                        netuid=self._netuid, uid=self._rizzo_uid)
+            else:
+                # Really old version of bittensor
+                metagraph = self._subtensor.metagraph(netuid=self._netuid)
+                rizzo_updated = int(
+                    metagraph.block - metagraph.last_update[self._rizzo_uid])
             self._log_info("")
             self._log_info(f"Rizzo Updated is {rizzo_updated} blocks.")
 
