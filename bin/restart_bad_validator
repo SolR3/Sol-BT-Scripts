@@ -25,6 +25,11 @@ def _parse_args():
         help="The uid of the subnet.")
     
     parser.add_argument(
+        "--local-subtensor",
+        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
+        "When not specified, use the 'finney' network subtensor.")
+
+    parser.add_argument(
         "--restart-script",
         required=True,
         help="The restart script path.")
@@ -134,7 +139,7 @@ class ValidatorCheckerUpdated(ValidatorChecker):
         # TODO - Fix this whole logic
         self._check_for_restart = False
 
-        self._subtensor = bittensor.subtensor()
+        self._subtensor = bittensor.subtensor(network=options.network)
         metagraph = self._subtensor.metagraph(netuid=self._netuid)
         self._rizzo_uid = metagraph.hotkeys.index(self._rizzo_hotkey)
 
@@ -497,6 +502,11 @@ def main():
     options.restarter_class = ValidatorRestarterRsnScript
     with ThreadPoolExecutor(max_workers=3) as executor:
         if options.do_check_updated:
+            options.network = (
+                f"ws://subtensor-{options.local_subtensor}.rizzo.network:9944"
+                if options.local_subtensor
+                else "finney"
+            )
             bittensor.logging.info("")
             bittensor.logging.info("================================")
             bittensor.logging.info("Running Updated value checker.")
