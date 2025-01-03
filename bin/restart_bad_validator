@@ -47,7 +47,7 @@ def _parse_args():
     parser.add_argument(
         "--updated-threshold",
         type=int,
-        default=1800,
+        default=1500,
         help="The Updated threshold value above which to restart the "
              "validator. This value is in blocks.")
 
