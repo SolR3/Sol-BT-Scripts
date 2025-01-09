@@ -61,12 +61,6 @@ def _parse_args():
              "--check-stopped-error-logs arg insetad.")
 
     parser.add_argument(
-        "--check-stopped-error-logs",
-        action="store_true",
-        help="When specified, check the error log file instead of the out log file "
-             "for stopped log output.")
-
-    parser.add_argument(
         "--log-errors-restart-wait-time",
         type=float,
         default=2,
@@ -308,7 +302,6 @@ class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
     def _init_setup(self, options):
         self._pm2_process = options.pm2_process
         self._restart_threshold = int(round(options.stopped_logs_threshold * 60))
-        self._check_error_log_file = options.check_stopped_error_logs
 
     def _run(self):
         self._log_info("")
@@ -319,25 +312,26 @@ class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
         pm2_output = json.loads(process.stdout)
         for pm2_process in pm2_output:
             if pm2_process["name"] == self._pm2_process:
-                log_file_key = (
-                    "pm_err_log_path" if self._check_error_log_file
-                    else "pm_out_log_path"
-                )
-                log_file =  pm2_process["pm2_env"][log_file_key]
+                out_log_file =  pm2_process["pm2_env"]["pm_out_log_path"]
+                error_log_file =  pm2_process["pm2_env"]["pm_err_log_path"]
                 break
 
-        self._log_info(f"Log file: {log_file}")
+        self._log_info(f"Out Log file: {out_log_file}")
+        self._log_info(f"Error Log file: {error_log_file}")
 
         while True:
-            log_file_mtime = int(os.path.getmtime(log_file))
+            out_log_file_mtime = int(os.path.getmtime(out_log_file))
+            error_log_file_mtime = int(os.path.getmtime(error_log_file))
             current_time = int(time.time())
-            log_file_ctime = time.ctime(log_file_mtime)
+            out_log_file_ctime = time.ctime(out_log_file_mtime)
+            error_log_file_ctime = time.ctime(error_log_file_mtime)
             current_ctime = time.ctime(current_time)
             self._log_info("")
-            self._log_info(f"Log file last modified: {log_file_ctime}")
+            self._log_info(f"Out Log file last modified: {out_log_file_ctime}")
+            self._log_info(f"Error Log file last modified: {error_log_file_ctime}")
             self._log_info(f"Current time: {current_ctime}")
 
-            time_diff = current_time - log_file_mtime
+            time_diff = current_time - max(out_log_file_mtime, error_log_file_mtime)
             if time_diff >= self._restart_threshold:
                 self._log_info(f"Time difference {time_diff} seconds "
                                f">= {self._restart_threshold} seconds")
