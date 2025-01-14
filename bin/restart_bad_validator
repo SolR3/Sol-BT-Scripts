@@ -355,9 +355,18 @@ class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
 
 
 class ValidatorRestarterRsnScript:
+    # Old one on Rizzo server
+    #
+    # _discord_monitor_url = (
+        # "https://discord.com/api/webhooks/1307044814348488704/"
+        # "uYEDTqa89CI-NPau5zDyET_JTGt1r2j1u3ARvSEVCKP7-nnOfvCoUoEKwdZCLoiXKsjV"
+    # )
+    #
+    # New one on VO-R server
+    #
     _discord_monitor_url = (
-    "https://discord.com/api/webhooks/1307044814348488704/"
-    "uYEDTqa89CI-NPau5zDyET_JTGt1r2j1u3ARvSEVCKP7-nnOfvCoUoEKwdZCLoiXKsjV"
+        "https://discord.com/api/webhooks/1328849265765777468/"
+        "yJg07DYWLJyiFZgZPaLGTmFEwiAu2JWW5osyjFVoqlMWT66JBbV9_FOcslvDdtibtcR0"
     )
 
     def __init__(self, checker_obj, options):
