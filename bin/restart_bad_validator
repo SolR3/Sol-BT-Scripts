@@ -301,6 +301,8 @@ class ValidatorCheckerPm2LogErrorsSn42(ValidatorCheckerPm2LogErrors):
 class ValidatorCheckerPm2LogErrorsSn43(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"Error during validation"]
 
+class ValidatorCheckerPm2LogErrorsSn55(ValidatorCheckerPm2LogErrors):
+    _subnet_patterns = [r"websockets\.exceptions\.InvalidStatus"]
 
 class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
     log_prefix = "CHECK LOGS STOPPED"
@@ -489,6 +491,7 @@ PM2_LOGS_VALIDATORS_DICT = {
     38: ValidatorCheckerPm2LogErrorsSn38,
     42: ValidatorCheckerPm2LogErrorsSn42,
     43: ValidatorCheckerPm2LogErrorsSn43,
+    55: ValidatorCheckerPm2LogErrorsSn55,
 }
 
 
