@@ -241,6 +241,7 @@ class ValidatorCheckerDockerLogErrors(ValidatorChecker):
                     for log_regex in log_regexes:
                         match = log_regex.search(line)
                         if match:
+                            do_restart = True
                             pattern = match.group()
                             self._log_info(
                                 f"Log line matches a restart pattern: \"{pattern}\"\n"
