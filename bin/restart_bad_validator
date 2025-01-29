@@ -84,14 +84,14 @@ def parse_args():
         dest="do_check_updated",
         help="When specified, this will skip the checking of the Upadted "
              "value.")
-    
+
     parser.add_argument(
         "--skip-log-errors-check",
         action="store_false",
         dest="do_check_errors",
         help="When specified, this will skip the checking of the log output "
              "for error patterns.")
-    
+
     parser.add_argument(
         "--skip-stopped-logs-check",
         action="store_false",
@@ -117,7 +117,7 @@ class ValidatorChecker:
         self._init_setup(options)
 
         self._run()
-    
+
     def _log_info(self, message):
         bittensor.logging.info(f"{self.log_prefix}: {message}")
 
@@ -218,11 +218,11 @@ class ValidatorCheckerDockerLogErrors(ValidatorChecker):
         log_regexes = []
         for log_pattern in self._generic_patterns + self._subnet_patterns:
             log_regexes.append(re.compile(log_pattern))
-        command = ["docker", "logs", self._docker_container, "--since 60s", "--follow"]
+        command = ["docker", "logs", self._docker_container, "--since", "60s", "--follow"]
         command_str = " ".join(command)
 
         while True:
-            self._log_info(f"Launching \"{command_str}\" process")
+            self._log_info(f"Launching process: \"{command_str}\"")
 
             mfd, sfd = pty.openpty()
             process = subprocess.Popen(
@@ -234,9 +234,10 @@ class ValidatorCheckerDockerLogErrors(ValidatorChecker):
                     line = master.readline()
                 except:
                     # The process exited.
-                    self._log_info("Process exited")
+                    self._log_info(f"Process exited: \"{command_str}\"")
                     break
                 else:
+                    do_restart = False
                     for log_regex in log_regexes:
                         match = log_regex.search(line)
                         if match:
@@ -247,8 +248,10 @@ class ValidatorCheckerDockerLogErrors(ValidatorChecker):
                             self._restarter.do_restart(
                                 f"Docker log output matches a restart pattern: \"{pattern}\"")
                             break
+                    if do_restart:
+                        break
 
-            self._log_info("Killing process")
+            self._log_info(f"Killing process: \"{command_str}\"")
             process.kill()
             master.close()
             sleep_time = 60
@@ -279,7 +282,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
         while True:
             restart_time = 0
             restarted = True
-            self._log_info(f"Launching \"{command_str}\" process")
+            self._log_info(f"Launching process: \"{command_str}\"")
 
             mfd, sfd = pty.openpty()
             process = subprocess.Popen(
@@ -291,7 +294,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                     line = master.readline()
                 except:
                     # The process exited.
-                    self._log_info("Process exited")
+                    self._log_info(f"Process exited: \"{command_str}\"")
                     break
                 else:
                     if not restarted:
@@ -319,7 +322,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                                  "after restart.")
                             break
 
-            self._log_info("Killing process")
+            self._log_info(f"Killing process: \"{command_str}\"")
             process.kill()
             master.close()
             sleep_time = 15
@@ -506,7 +509,7 @@ class ValidatorRestarterRsnScript:
             self._send_monitor_notification(
                 f"{script_name}: Failed to restart subnet {self._netuid} - {description}")
             return False
-        
+
         if restart_script:
             os.unlink(restart_script)
         self._log_info(f"Subnet '{self._netuid}' successfully restarted.")
