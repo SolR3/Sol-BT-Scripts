@@ -218,7 +218,7 @@ class ValidatorCheckerDockerLogErrors(ValidatorChecker):
         log_regexes = []
         for log_pattern in self._generic_patterns + self._subnet_patterns:
             log_regexes.append(re.compile(log_pattern))
-        command = ["docker", "logs", self._docker_container, "--since", "60s", "--follow"]
+        command = ["docker", "logs", self._docker_container, "--since", "15s", "--follow"]
         command_str = " ".join(command)
 
         while True:
@@ -255,7 +255,7 @@ class ValidatorCheckerDockerLogErrors(ValidatorChecker):
             self._log_info(f"Killing process: \"{command_str}\"")
             process.kill()
             master.close()
-            sleep_time = 60
+            sleep_time = 15
             self._log_info(f"Sleeping {sleep_time} seconds")
             time.sleep(sleep_time)
 
