@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 
-# bittensor import
-import bittensor
-
 # standard imports
 import argparse
 from concurrent.futures import ThreadPoolExecutor
@@ -11,11 +8,18 @@ import os
 import pty
 import re
 import subprocess
+import sys
 import tempfile
 import time
 
 
-def _parse_args():
+# Constants
+DEFAULT_UPDATED_THRESHOLD = 1500
+DEFAULT_STOPPED_LOGS_THRESHOLD = 30
+DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME = 2
+
+
+def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -23,11 +27,6 @@ def _parse_args():
         type=int,
         required=True,
         help="The uid of the subnet.")
-    
-    parser.add_argument(
-        "--local-subtensor",
-        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
-        "When not specified, use the 'finney' network subtensor.")
 
     parser.add_argument(
         "--restart-script",
@@ -40,33 +39,44 @@ def _parse_args():
 
     parser.add_argument(
         "--pm2-process",
-        required=True,
-        help="Restart the validator based on log patterns. The value passed "
-             "to this arg is the name of the pm2 process to monitor.")
+        help="Restart the validator based on pm2 log patterns or stopped pm2 "
+             "log output. The value passed to this arg is the name of the pm2 "
+             "process to monitor.")
+
+    parser.add_argument(
+        "--docker-container",
+        help="Restart the validator based on docker log patterns. The value "
+             "passed to this arg is the name of the docker container to monitor.")
+
+    parser.add_argument(
+        "--local-subtensor",
+        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
+        "When not specified, use the 'finney' network subtensor.")
 
     parser.add_argument(
         "--updated-threshold",
         type=int,
-        default=1500,
+        default=DEFAULT_UPDATED_THRESHOLD,
         help="The Updated threshold value above which to restart the "
-             "validator. This value is in blocks.")
+             "validator. This value is in blocks. "
+             f"Default: {DEFAULT_UPDATED_THRESHOLD}")
 
     parser.add_argument(
         "--stopped-logs-threshold",
         type=float,
-        default=30,
+        default=DEFAULT_STOPPED_LOGS_THRESHOLD,
         help="The time in minutes after which to restart the process if the "
-             "pm2 log file hasn't updated. This is usually the out log file "
-             "but the error log file can be monotored with the "
-             "--check-stopped-error-logs arg insetad.")
+             "pm2 out/error log files haven't updated. "
+             f"Default: {DEFAULT_STOPPED_LOGS_THRESHOLD}")
 
     parser.add_argument(
         "--log-errors-restart-wait-time",
         type=float,
-        default=2,
+        default=DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME,
         help="The number of minutes to wait after restarting a the validator "
              "due to a log patterns error so it doesn't get restarted multiple "
-             "times due to duplicate or quickly recurring error patterns.")
+             "times due to duplicate or quickly recurring error patterns. "
+             f"Default: {DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME}")
 
     parser.add_argument(
         "--skip-updated-check",
@@ -192,8 +202,62 @@ class ValidatorCheckerUpdated(ValidatorChecker):
             time.sleep(sleep_interval)
 
 
+class ValidatorCheckerDockerLogErrors(ValidatorChecker):
+    log_prefix = "CHECK DOCKER LOG ERRORS"
+    _generic_patterns = [r"\[Errno 32\] Broken pipe"]
+    _subnet_patterns = []
+
+    def _init_setup(self, options):
+        self._docker_container = options.docker_container
+
+    def _run(self):
+        self._log_info("")
+        self._log_info("Checking for log patterns.")
+        self._log_info("")
+
+        log_regexes = []
+        for log_pattern in self._generic_patterns + self._subnet_patterns:
+            log_regexes.append(re.compile(log_pattern))
+        command = ["docker", "logs", self._docker_container, "--since 60s", "--follow"]
+        command_str = " ".join(command)
+
+        while True:
+            self._log_info(f"Launching \"{command_str}\" process")
+
+            mfd, sfd = pty.openpty()
+            process = subprocess.Popen(
+                command, stdout=sfd, stderr=subprocess.STDOUT)
+            os.close(sfd)
+            master = os.fdopen(mfd)
+            while True:
+                try:
+                    line = master.readline()
+                except:
+                    # The process exited.
+                    self._log_info("Process exited")
+                    break
+                else:
+                    for log_regex in log_regexes:
+                        match = log_regex.search(line)
+                        if match:
+                            pattern = match.group()
+                            self._log_info(
+                                f"Log line matches a restart pattern: \"{pattern}\"\n"
+                                f"{line}\n")
+                            self._restarter.do_restart(
+                                f"Docker log output matches a restart pattern: \"{pattern}\"")
+                            break
+
+            self._log_info("Killing process")
+            process.kill()
+            master.close()
+            sleep_time = 60
+            self._log_info(f"Sleeping {sleep_time} seconds")
+            time.sleep(sleep_time)
+
+
 class ValidatorCheckerPm2LogErrors(ValidatorChecker):
-    log_prefix = "CHECK LOG ERRORS"
+    log_prefix = "CHECK PM2 LOG ERRORS"
     _generic_patterns = [r"\[Errno 32\] Broken pipe"]
     _subnet_patterns = []
 
@@ -244,7 +308,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                                 f"Log line matches a restart pattern: \"{pattern}\"\n"
                                 f"{line}\n")
                             self._restarter.do_restart(
-                                f"Log output matches a restart pattern: \"{pattern}\"")
+                                f"Pm2 log output matches a restart pattern: \"{pattern}\"")
 
                             restart_time = (
                                 time.time() + (self._restart_wait_time * 60)
@@ -254,6 +318,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                                 f"Waiting {self._restart_wait_time} minutes "
                                  "after restart.")
                             break
+
             self._log_info("Killing process")
             process.kill()
             master.close()
@@ -272,7 +337,7 @@ class ValidatorCheckerPm2LogErrorsSn16(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"ConnectionRefusedError"]
 
 class ValidatorCheckerPm2LogErrorsSn18(ValidatorCheckerPm2LogErrors):
-    _subnet_patterns = [r"asyncio.exceptions.CancelledError"]
+    _subnet_patterns = [r"asyncio\.exceptions\.CancelledError"]
 
 # class ValidatorCheckerPm2LogErrorsSn20(ValidatorCheckerPm2LogErrors):
 #     _subnet_patterns = [r"Error in forward: Failed to get task after \d+ attempts"]
@@ -284,7 +349,7 @@ class ValidatorCheckerPm2LogErrorsSn28(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"Transaction has an ancient birth block"]
 
 class ValidatorCheckerPm2LogErrorsSn30(ValidatorCheckerPm2LogErrors):
-    _subnet_patterns = [r"asyncio.exceptions.CancelledError"]
+    _subnet_patterns = [r"asyncio\.exceptions\.CancelledError"]
 
 class ValidatorCheckerPm2LogErrorsSn34(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [
@@ -304,8 +369,9 @@ class ValidatorCheckerPm2LogErrorsSn43(ValidatorCheckerPm2LogErrors):
 class ValidatorCheckerPm2LogErrorsSn55(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"websockets\.exceptions\.InvalidStatus"]
 
+
 class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
-    log_prefix = "CHECK LOGS STOPPED"
+    log_prefix = "CHECK PM2 LOGS STOPPED"
 
     def _init_setup(self, options):
         self._pm2_process = options.pm2_process
@@ -472,12 +538,7 @@ class ValidatorRestarterRsnScript:
             self._log_info("Discord monitor notification successfully sent.")
 
 
-# TODO - Implement this
-class ValidatorRestarterDocker:
-    pass
 
-
-# TODO - This can be done better
 PM2_LOGS_VALIDATORS_DICT = {
     1: ValidatorCheckerPm2LogErrorsSn1,
     10: ValidatorCheckerPm2LogErrorsSn10,
@@ -495,17 +556,33 @@ PM2_LOGS_VALIDATORS_DICT = {
 }
 
 
+# TODO - This can be done better
+DOCKER_LOGS_VALIDATORS_DICT = {
+}
+
+
 def _run_checker(checker_class, options):
     checker_class(options)
 
 
-def main():
+def main(options):
     try:
         bittensor.logging.enable_debug()
     except AttributeError:
         bittensor.logging.set_debug(True)
 
-    options = _parse_args()
+    if (options.do_check_errors
+        and not (options.pm2_process or options.docker_container)
+    ):
+        bittensor.logging.error(
+            "Either a --pm2-process or --docker-container must be specified "
+            "when checking log errors.")
+        sys.exit(1)
+    if options.do_check_stopped_logs and not options.pm2_process:
+        bittensor.logging.error(
+            "A --pm2-process must be specified when checking for "
+            "stopped log output.")
+        sys.exit(1)
 
     sleep_time = 15
     script_name =  os.path.basename(__file__)
@@ -516,7 +593,9 @@ def main():
     bittensor.logging.info("")
     time.sleep(sleep_time)
 
-    log_checker_class = PM2_LOGS_VALIDATORS_DICT.get(
+    docker_log_checker_class = DOCKER_LOGS_VALIDATORS_DICT.get(
+        options.netuid, ValidatorCheckerDockerLogErrors)
+    pm2_log_checker_class = PM2_LOGS_VALIDATORS_DICT.get(
         options.netuid, ValidatorCheckerPm2LogErrors)
 
     options.restarter_class = ValidatorRestarterRsnScript
@@ -539,25 +618,43 @@ def main():
             time.sleep(sleep_time)
 
         if options.do_check_errors:
-            bittensor.logging.info("")
-            bittensor.logging.info("================================")
-            bittensor.logging.info("Running log errors checker.")
-            bittensor.logging.info("================================")
-            bittensor.logging.info("")
-            executor.submit(_run_checker, log_checker_class, options)
+            if options.docker_container:
+                bittensor.logging.info("")
+                bittensor.logging.info("===================================")
+                bittensor.logging.info("Running docker log errors checker.")
+                bittensor.logging.info("===================================")
+                bittensor.logging.info("")
+                executor.submit(_run_checker, docker_log_checker_class, options)
 
-            bittensor.logging.info(f"Sleeping {sleep_time} seconds before "
-                                    "starting the next one.")
-            time.sleep(sleep_time)
+                bittensor.logging.info(f"Sleeping {sleep_time} seconds before "
+                                        "starting the next one.")
+                time.sleep(sleep_time)
+
+            if options.pm2_process:
+                bittensor.logging.info("")
+                bittensor.logging.info("================================")
+                bittensor.logging.info("Running pm2 log errors checker.")
+                bittensor.logging.info("================================")
+                bittensor.logging.info("")
+                executor.submit(_run_checker, pm2_log_checker_class, options)
+
+                bittensor.logging.info(f"Sleeping {sleep_time} seconds before "
+                                        "starting the next one.")
+                time.sleep(sleep_time)
 
         if options.do_check_stopped_logs:
             bittensor.logging.info("")
             bittensor.logging.info("================================")
-            bittensor.logging.info("Running stopped logs checker.")
+            bittensor.logging.info("Running stopped pm2 logs checker.")
             bittensor.logging.info("================================")
             bittensor.logging.info("")
             executor.submit(_run_checker, ValidatorCheckerPm2StoppedLogs, options)
 
 
 if __name__ == "__main__":
-    main()
+    options = parse_args()
+
+    # Importing bittensor here suppresses the --help info
+    import bittensor
+
+    main(options)
