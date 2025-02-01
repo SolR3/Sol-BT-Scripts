@@ -8,7 +8,6 @@ import os
 import pty
 import re
 import subprocess
-import sys
 import tempfile
 import time
 
@@ -66,7 +65,7 @@ def parse_args():
         type=float,
         default=DEFAULT_STOPPED_LOGS_THRESHOLD,
         help="The time in minutes after which to restart the process if the "
-             "pm2 out/error log files haven't updated. "
+             "pm2 log files haven't updated. "
              f"Default: {DEFAULT_STOPPED_LOGS_THRESHOLD}")
 
     parser.add_argument(
@@ -74,15 +73,16 @@ def parse_args():
         type=float,
         default=DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME,
         help="The number of minutes to wait after restarting a the validator "
-             "due to a log patterns error so it doesn't get restarted multiple "
-             "times due to duplicate or quickly recurring error patterns. "
+             "due to a pm2 log patterns error so it doesn't get restarted multiple "
+             "times due to duplicate or quickly recurring error patterns. NOTE: "
+             "this only applies to pm2 logs. Docker logs are unaffected by this."
              f"Default: {DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME}")
 
     parser.add_argument(
         "--skip-updated-check",
         action="store_false",
         dest="do_check_updated",
-        help="When specified, this will skip the checking of the Upadted "
+        help="When specified, this will skip the checking of the Updated "
              "value.")
 
     parser.add_argument(
@@ -96,8 +96,8 @@ def parse_args():
         "--skip-stopped-logs-check",
         action="store_false",
         dest="do_check_stopped_logs",
-        help="When specified, this will skip the checking whether the out log "
-             "file sotpped udpdating.")
+        help="When specified, this will skip the checking whether the pm2 log "
+             "files sotpped udpdating.")
 
     parser.add_argument(
         "--skip-discord-notify",
@@ -578,15 +578,15 @@ def main(options):
     if (options.do_check_errors
         and not (options.pm2_process or options.docker_container)
     ):
-        bittensor.logging.error(
-            "Either a --pm2-process or --docker-container must be specified "
-            "when checking log errors.")
-        sys.exit(1)
+        bittensor.logging.warning(
+            "No --pm2-process or --docker-container is specified. "
+            "Not checking for log errors.")
+        options.do_check_errors = False
     if options.do_check_stopped_logs and not options.pm2_process:
-        bittensor.logging.error(
-            "A --pm2-process must be specified when checking for "
-            "stopped log output.")
-        sys.exit(1)
+        bittensor.logging.warning(
+            "No --pm2-process is specified. Not checking for "
+            "stopped pm2 log output.")
+        options.do_check_stopped_logs = False
 
     sleep_time = 15
     script_name =  os.path.basename(__file__)
