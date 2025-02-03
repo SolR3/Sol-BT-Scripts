@@ -425,6 +425,9 @@ class ValidatorCheckerPm2LogErrorsSn18(ValidatorCheckerPm2LogErrors):
 # class ValidatorCheckerPm2LogErrorsSn20(ValidatorCheckerPm2LogErrors):
 #     _subnet_patterns = [r"Error in forward: Failed to get task after \d+ attempts"]
 
+class ValidatorCheckerPm2LogErrorsSn21(ValidatorCheckerPm2LogErrors):
+    _subnet_patterns = [r"asyncio\.exceptions\.CancelledError"]
+
 # class ValidatorCheckerPm2LogErrorsSn24(ValidatorCheckerPm2LogErrors):
 #     _subnet_patterns = [r"EOF occurred in violation of protocol"]
 
@@ -626,6 +629,7 @@ PM2_LOGS_VALIDATORS_DICT = {
     10: ValidatorCheckerPm2LogErrorsSn10,
     16: ValidatorCheckerPm2LogErrorsSn16,
     18: ValidatorCheckerPm2LogErrorsSn18,
+    21: ValidatorCheckerPm2LogErrorsSn21,
     # 20: ValidatorCheckerPm2LogErrorsSn20,
     # 24: ValidatorCheckerPm2LogErrorsSn24,
     28: ValidatorCheckerPm2LogErrorsSn28,
