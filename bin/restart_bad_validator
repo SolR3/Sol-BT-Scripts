@@ -7,6 +7,7 @@ import json
 import os
 import pty
 import re
+import shlex
 import subprocess
 import tempfile
 import time
@@ -553,10 +554,8 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
         self._log_info("Checking for code updates.")
         self._log_info("")
 
-        get_cmd = ["git", "rev-parse", "HEAD"]
-        get_cmd_str = " ".join(get_cmd)
-        pull_cmd = ["git", "pull", "--autostash"]
-        pull_cmd_str = " ".join(pull_cmd)
+        get_cmd = "git rev-parse HEAD"
+        pull_cmd = "git pull --autostash"
         
         while True:
             # Get commit then pull then get commit again. First get commit is in case
@@ -564,28 +563,28 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
             # we are always comparing the correct commits.
             try:
                 process = subprocess.run(
-                    get_cmd, check=True, stdout=subprocess.PIPE
+                    shlex.split(get_cmd), check=True, stdout=subprocess.PIPE
                 )
             except subprocess.CalledProcessError as exc:
                 self._log_error(
-                    f"'{get_cmd_str}' command failed with error: {exc}"
+                    f"'{get_cmd}' command failed with error: {exc}"
                 )
             else:
                 current_commit = process.stdout.decode().strip()
                 try:
-                    subprocess.run(pull_cmd, check=True)
+                    subprocess.run(shlex.split(pull_cmd), check=True)
                 except subprocess.CalledProcessError as exc:
                     self._log_error(
-                        f"'{pull_cmd_str}' command failed with error: {exc}"
+                        f"'{pull_cmd}' command failed with error: {exc}"
                     )
                 else:
                     try:
                         process = subprocess.run(
-                            get_cmd, check=True, stdout=subprocess.PIPE
+                            shlex.split(get_cmd), check=True, stdout=subprocess.PIPE
                         )
                     except subprocess.CalledProcessError as exc:
                         self._log_error(
-                            f"'{get_cmd_str}' command failed with error: {exc}"
+                            f"'{get_cmd}' command failed with error: {exc}"
                         )
                     else:
                         new_commit = process.stdout.decode().strip()
