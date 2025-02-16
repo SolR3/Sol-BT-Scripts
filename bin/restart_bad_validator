@@ -19,6 +19,8 @@ DEFAULT_STOPPED_LOGS_THRESHOLD = 30
 DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME = 2
 TOTAL_CHECKS = 6  # TODO: Calculate this instead of hard-coding it.
 
+DEBUG = False
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -151,6 +153,9 @@ class ValidatorChecker:
 
     def _log_error(self, message):
         bittensor.logging.error(f"{self.log_prefix}: {message}")
+
+    def _log_debug(self, message):
+        bittensor.logging.debug(f"{self.log_prefix}: {message}")
 
     def _init_setup(self, options):
         raise NotImplementedError("Must be implemented in subclasses.")
@@ -353,6 +358,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
     log_prefix = "CHECK PM2 LOG ERRORS"
     _generic_patterns = [r"\[Errno 32\] Broken pipe"]
     _subnet_patterns = []
+    _skip_initial_log_lines = 40
 
     def _init_setup(self, options):
         self._pm2_process = options.pm2_process
@@ -370,8 +376,9 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
         command_str = " ".join(command)
 
         while True:
-            restart_time = 0
-            restarted = True
+            _initial_log_lines = 0
+            reactivate_time = 0
+            log_check_active = True
             self._log_info(f"Launching process: \"{command_str}\"")
 
             mfd, sfd = pty.openpty()
@@ -387,11 +394,23 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                     self._log_info(f"Process exited: \"{command_str}\"")
                     break
                 else:
-                    if not restarted:
-                        if time.time() < restart_time:
+                    if _initial_log_lines < self._skip_initial_log_lines:
+                        _initial_log_lines += 1
+                        if DEBUG:
+                            self._log_debug(f"{_initial_log_lines=}")
+                        continue
+                    elif _initial_log_lines == self._skip_initial_log_lines:
+                        _initial_log_lines += 1
+                        self._log_info("Starting log patterns check.")
+
+                    if not log_check_active:
+                        if time.time() < reactivate_time:
+                            if DEBUG:
+                                time_until_reactivate = reactivate_time - time.time()
+                                self._log_debug(f"{time_until_reactivate=}")
                             continue
-                        restarted = True
-                        self._log_info("Restarting log patterns monitor.")
+                        log_check_active = True
+                        self._log_info("Continuing log patterns check.")
 
                     for log_regex in log_regexes:
                         match = log_regex.search(line)
@@ -404,13 +423,14 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                                 f"Pm2 log output matches a restart pattern: \"{pattern}\""
                             )
 
-                            restart_time = (
+                            reactivate_time = (
                                 time.time() + (self._restart_wait_time * 60)
                             )
-                            restarted = False
+                            log_check_active = False
                             self._log_info(
-                                f"Waiting {self._restart_wait_time} minutes "
-                                 "after restart.")
+                                "Stopping log patterns check. Waiting "
+                                f"{self._restart_wait_time} minutes after restart "
+                                "to continue checking log patterns.")
                             break
 
             self._log_info(f"Killing process: \"{command_str}\"")
