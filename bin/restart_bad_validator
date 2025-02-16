@@ -335,7 +335,8 @@ class ValidatorCheckerDockerLogErrors(ValidatorChecker):
                                 f"Log line matches a restart pattern: \"{pattern}\"\n"
                                 f"{line}\n")
                             self._restarter.do_restart(
-                                f"Docker log output matches a restart pattern: \"{pattern}\"")
+                                f"Docker log output matches a restart pattern: \"{pattern}\""
+                            )
                             break
                     if do_restart:
                         break
@@ -400,7 +401,8 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                                 f"Log line matches a restart pattern: \"{pattern}\"\n"
                                 f"{line}\n")
                             self._restarter.do_restart(
-                                f"Pm2 log output matches a restart pattern: \"{pattern}\"")
+                                f"Pm2 log output matches a restart pattern: \"{pattern}\""
+                            )
 
                             restart_time = (
                                 time.time() + (self._restart_wait_time * 60)
@@ -572,7 +574,10 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
                         self._log_info(f"New commit: {new_commit}")
                         if current_commit != new_commit:
                             self._log_info("Commits changed.")
-                            self._restarter.do_restart("Pulled new code from git repo.")
+                            self._restarter.do_restart(
+                                "Pulled new code from git repo.",
+                                force_notify=True
+                            )
                         else:
                             self._log_info("Commits are the same. Doing nothing.")
 
@@ -621,11 +626,11 @@ class ValidatorRestarterRsnScript:
     def _log_error(self, message):
         bittensor.logging.error(f"{self._checker_obj.log_prefix}: {message}")
 
-    def do_restart(self, description):
+    def do_restart(self, description, force_notify=False):
         # TODO: acquire threading lock
-        self._do_restart(description)
+        self._do_restart(description, force_notify)
 
-    def _do_restart(self, description):
+    def _do_restart(self, description, force_notify):
         script_name =  os.path.basename(__file__)
 
         self._log_info(f"Restarting subnet {self._netuid}: {description}.")
@@ -660,19 +665,23 @@ class ValidatorRestarterRsnScript:
             self._log_error(
                 f"'{restart_cmd_str}' command failed with error: {exc}")
             self._send_monitor_notification(
-                f"{script_name}: Failed to restart subnet {self._netuid} - {description}")
+                f"{script_name}: Failed to restart subnet {self._netuid} - {description}",
+                force_notify
+            )
             return False
 
         if restart_script:
             os.unlink(restart_script)
         self._log_info(f"Subnet '{self._netuid}' successfully restarted.")
         self._send_monitor_notification(
-            f"{script_name}: Successfully restarted on subnet {self._netuid} - {description}")
+            f"{script_name}: Successfully restarted on subnet {self._netuid} - {description}",
+            force_notify
+        )
 
         return True
 
-    def _send_monitor_notification(self, message):
-        if not self._discord_notify:
+    def _send_monitor_notification(self, message, force_notify):
+        if not force_notify and not self._discord_notify:
             self._log_info("Not sending discord monitor notification.")
             return
 
