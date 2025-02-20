@@ -605,6 +605,97 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
             time.sleep(sleep_interval)
 
 
+class ValidatorCheckerCodeUpdateLatestTag(ValidatorChecker):
+    log_prefix = "CHECK CODE UPDATE"
+
+    def _init_setup(self, options):
+        pass
+
+    def _run(self):
+        self._log_info("")
+        self._log_info("Checking for code updates.")
+        self._log_info("")
+
+        fetch_cmd = "git fetch"
+        get_cmd = "git describe --tags {}"
+        current_cmd = "git rev-parse HEAD"
+        latest_cmd = "git rev-list --tags --max-count=1"
+        pull_cmd = "git checkout {}"
+
+        while True:
+            try:
+                subprocess.run(shlex.split(fetch_cmd), check=True)
+            except subprocess.CalledProcessError as exc:
+                self._log_error(
+                    f"'{fetch_cmd}' command failed with error: {exc}"
+                )
+            else:
+                try:
+                    process = subprocess.run(
+                        shlex.split(current_cmd), check=True, stdout=subprocess.PIPE
+                    )
+                except subprocess.CalledProcessError as exc:
+                    self._log_error(
+                        f"'{current_cmd}' command failed with error: {exc}"
+                    )
+                else:
+                    current_rev = process.stdout.decode().strip()
+                    try:
+                        get_current_cmd = get_cmd.format(current_rev)
+                        process = subprocess.run(
+                            shlex.split(get_current_cmd), check=True, stdout=subprocess.PIPE
+                        )
+                    except subprocess.CalledProcessError as exc:
+                        self._log_error(
+                            f"'{get_current_cmd}' command failed with error: {exc}"
+                        )
+                    else:
+                        current_tag = process.stdout.decode().strip()
+                        try:
+                            process = subprocess.run(
+                                shlex.split(latest_cmd), check=True, stdout=subprocess.PIPE
+                            )
+                        except subprocess.CalledProcessError as exc:
+                            self._log_error(
+                                f"'{latest_cmd}' command failed with error: {exc}"
+                            )
+                        else:
+                            latest_rev = process.stdout.decode().strip()
+                            try:
+                                get_latest_cmd = get_cmd.format(latest_rev)
+                                process = subprocess.run(
+                                    shlex.split(get_latest_cmd), check=True, stdout=subprocess.PIPE
+                                )
+                            except subprocess.CalledProcessError as exc:
+                                self._log_error(
+                                    f"'{get_latest_cmd}' command failed with error: {exc}"
+                                )
+                            else:
+                                latest_tag = process.stdout.decode().strip()
+                                self._log_info("")
+                                self._log_info(f"Current tag: {current_tag}")
+                                self._log_info(f"Latest tag: {latest_tag}")
+                                if current_tag != latest_tag:
+                                    self._log_info("Tags are different.")
+                                    try:
+                                        pull_latest_cmd = pull_cmd.format(latest_tag)
+                                        subprocess.run(shlex.split(pull_latest_cmd), check=True)
+                                    except subprocess.CalledProcessError as exc:
+                                        self._log_error(
+                                            f"'{pull_latest_cmd}' command failed with error: {exc}"
+                                        )
+                                    else:
+                                        self._restarter.do_restart(
+                                            "Pulled new code from git repo.",
+                                            force_notify=True
+                                        )
+                                else:
+                                    self._log_info("Tags are the same. Doing nothing.")
+
+            sleep_interval = 4320 # 360 blocks
+            self._log_info(f"Sleeping for {sleep_interval} seconds.")
+            time.sleep(sleep_interval)
+
 
 class ValidatorRestarterRsnScript:
     # Old one on Rizzo server
@@ -744,6 +835,9 @@ DOCKER_LOGS_VALIDATORS_DICT = {
 }
 
 
+GIT_TAG_VALIDATORS = [42, 59]
+
+
 def _run_checker(checker_class, options):
     checker_class(options)
 
@@ -787,6 +881,11 @@ def main(options):
         options.netuid, ValidatorCheckerDockerLogErrors)
     pm2_log_checker_class = PM2_LOGS_VALIDATORS_DICT.get(
         options.netuid, ValidatorCheckerPm2LogErrors)
+
+    code_checker_class = (
+        ValidatorCheckerCodeUpdateLatestTag if options.netuid in GIT_TAG_VALIDATORS
+        else ValidatorCheckerCodeUpdate
+    )
 
     options.restarter_class = ValidatorRestarterRsnScript
     with ThreadPoolExecutor(max_workers=TOTAL_CHECKS) as executor:
@@ -857,7 +956,7 @@ def main(options):
             bittensor.logging.info("Running code update checker.")
             bittensor.logging.info("=============================")
             bittensor.logging.info("")
-            executor.submit(_run_checker, ValidatorCheckerCodeUpdate, options)
+            executor.submit(_run_checker, code_checker_class, options)
 
 
 if __name__ == "__main__":
