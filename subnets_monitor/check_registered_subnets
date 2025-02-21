@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+
+# standard imports
+import argparse
+import json
+import os
+import subprocess
+import time
+
+
+DRYRUN = False
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-j", "--json-folder",
+        required=True,
+        help="The json folder in which to write the json files.")
+
+    parser.add_argument(
+        "-i", "--interval",
+        type=float,
+        default=5,
+        help="The number of minutes between data gathering.")
+
+    parser.add_argument(
+        "-l", "--local-subtensor",
+        help="When specified, use a local running subtensor. When not "
+             "specified, use the 'finney' network subtensor.")
+
+    return parser.parse_args()
+
+
+class SubnetsChecker:
+    _json_file_name = "registered_subnets.json"
+    _discord_monitor_url = (
+        "https://discord.com/api/webhooks/1307044814348488704/"
+        "uYEDTqa89CI-NPau5zDyET_JTGt1r2j1u3ARvSEVCKP7-nnOfvCoUoEKwdZCLoiXKsjV"
+    )
+
+    def __init__(self, network, json_folder):
+        self._network = network
+        self._json_file = os.path.join(json_folder, self._json_file_name)
+
+    def check_subnets(self):
+        print("\nChecking subnets")
+        new_registered_subnet_list = self._get_registered_subnets()
+        current_registered_subnet_list = self._read_subnets_json_file()
+        self._compare_and_notify(
+            current_registered_subnet_list,
+            new_registered_subnet_list
+        )
+        self._write_subnets_json_file(new_registered_subnet_list)
+
+    def _get_registered_subnets(self):
+        t1 = time.time()
+        registered_subnet_list = []
+        subtensor = bittensor.subtensor(network=self._network)
+        for subnet in subtensor.get_subnets()[1:]:
+            metagraph = subtensor.metagraph(netuid=subnet)
+            if metagraph.hparams.registration_allowed:
+                registered_subnet_list.append(str(subnet))
+        t2 = time.time() - t1
+        print(f"Gathered subnet data in {t2:.3} seconds")
+        return registered_subnet_list
+
+    def _compare_and_notify(
+            self,
+            current_registered_subnet_list,
+            new_registered_subnet_list
+        ):
+        if not current_registered_subnet_list:
+            return
+        added_subnets = sorted(
+            set(
+                new_registered_subnet_list
+            ).difference(
+                set(current_registered_subnet_list)
+            )
+        )
+        removed_subnets = sorted(
+            set(
+                current_registered_subnet_list
+            ).difference(
+                set(new_registered_subnet_list)
+            )
+        )
+        print(f"Current registered subnets: {current_registered_subnet_list}")
+        print(f"New registered subnets:     {new_registered_subnet_list}")
+        print(f"Added subnets: {added_subnets}")
+        print(f"Removed subnets: {removed_subnets}")
+        if added_subnets:
+            if len(added_subnets) > 1:
+                added_subnets = ", ".join(added_subnets)
+                message = (
+                    "The following new subnets are open for registration: "
+                    f"{added_subnets}"
+                )
+            else:
+                added_subnet = added_subnets[0]
+                message = (
+                    "The following new subnet is open for registration: "
+                    f"{added_subnet}"
+                )
+            self._notify(message)
+        if removed_subnets:
+            if len(removed_subnets) > 1:
+                removed_subnets = ", ".join(removed_subnets)
+                message = (
+                    "The following subnets have been de-registered: "
+                    f"{removed_subnets}"
+                )
+            else:
+                removed_subnet = removed_subnets[0]
+                message = (
+                    "The following subnet has been de-registered: "
+                    f"{removed_subnet}"
+                )
+            self._notify(message)
+
+    def _read_subnets_json_file(self):
+        if not os.path.exists(self._json_file):
+            print(f"Json file {self._json_file} does not exist. "
+                  "This must be the first time running.")
+            return None
+        with open(self._json_file, "r") as fd:
+            return json.load(fd)
+
+    def _write_subnets_json_file(
+            self,
+            registered_subnet_list
+        ):
+        with open(self._json_file, "w") as fd:
+            return json.dump(registered_subnet_list, fd)
+
+    def _notify(self, message):
+        payload = json.dumps({"content": message})
+        monitor_cmd = [
+            "curl", "-H", "Content-Type: application/json",
+            "-d", payload, self._discord_monitor_url
+        ]
+        monitor_cmd_str = " ".join(monitor_cmd)
+        print(f"Running command: '{monitor_cmd_str}'")
+        if DRYRUN:
+            print(message)
+            return
+
+        try:
+            subprocess.run(monitor_cmd, check=True)
+        except subprocess.CalledProcessError as exc:
+            print("Failed to send discord monitor notification."
+                  f"\n'{monitor_cmd_str}' command failed with error {exc}")
+        else:
+            print("Discord monitor notification successfully sent.")
+
+
+def format_time(total_time):
+    m = total_time/60
+    minutes = int(m)
+    seconds = round((m - minutes)*60)
+
+    runtime_text = [f"{minutes} minutes"] if minutes else []
+    if seconds:
+        runtime_text += [f"{seconds} seconds"]
+    runtime_text = ", ".join(runtime_text)
+
+    return runtime_text
+
+
+def main(options):
+    interval_seconds = round(options.interval * 60)
+    network = (
+        f"ws://subtensor-{options.local_subtensor}.rizzo.network:9944"
+        if options.local_subtensor
+        else "finney"
+    )
+
+    subnets_checker = SubnetsChecker(network, options.json_folder)
+    while True:
+        start_time = time.time()
+        subnets_checker.check_subnets()
+        total_seconds = round(time.time() - start_time)
+
+        wait_seconds = interval_seconds - total_seconds
+        if wait_seconds > 0:
+            wait_time_formatted = format_time(wait_seconds)
+            print(f"Waiting {wait_time_formatted}.")
+            time.sleep(wait_seconds)
+        else:
+             interval_formatted = format_time(interval_seconds)
+             print(f"Subnets check took longer than {interval_formatted}. "
+                   "Not waiting.")
+
+
+if __name__ == "__main__":
+    options = _parse_args()
+
+    # Importing bittensor here suppresses the --help info
+    import bittensor
+
+    main(options)
