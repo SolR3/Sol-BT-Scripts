@@ -155,6 +155,9 @@ class ValidatorChecker:
     def _log_error(self, message):
         bittensor.logging.error(f"{self.log_prefix}: {message}")
 
+    def _log_warning(self, message):
+        bittensor.logging.warning(f"{self.log_prefix}: {message}")
+
     def _log_debug(self, message):
         bittensor.logging.debug(f"{self.log_prefix}: {message}")
 
@@ -309,6 +312,13 @@ class ValidatorCheckerDockerLogErrors(ValidatorChecker):
         self._log_info("Checking for log patterns.")
         self._log_info("")
 
+        if not self._generic_patterns and not self._subnet_patterns:
+            self._log_warning(
+                f"No log patterns defined for subnet {self._netuid}. "
+                "Not checking for log patterns."
+            )
+            return
+
         log_regexes = []
         for log_pattern in self._generic_patterns + self._subnet_patterns:
             log_regexes.append(re.compile(log_pattern))
@@ -369,6 +379,13 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
         self._log_info("")
         self._log_info("Checking for log patterns.")
         self._log_info("")
+
+        if not self._generic_patterns and not self._subnet_patterns:
+            self._log_warning(
+                f"No log patterns defined for subnet {self._netuid}. "
+                "Not checking for log patterns."
+            )
+            return
 
         log_regexes = []
         for log_pattern in self._generic_patterns + self._subnet_patterns:
@@ -462,6 +479,9 @@ class ValidatorCheckerPm2LogErrorsSn21(ValidatorCheckerPm2LogErrors):
 
 # class ValidatorCheckerPm2LogErrorsSn24(ValidatorCheckerPm2LogErrors):
 #     _subnet_patterns = [r"EOF occurred in violation of protocol"]
+
+class ValidatorCheckerPm2LogErrorsSn27(ValidatorCheckerPm2LogErrors):
+    _generic_patterns = []
 
 class ValidatorCheckerPm2LogErrorsSn28(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"Transaction has an ancient birth block"]
@@ -820,6 +840,7 @@ PM2_LOGS_VALIDATORS_DICT = {
     21: ValidatorCheckerPm2LogErrorsSn21,
     # 20: ValidatorCheckerPm2LogErrorsSn20,
     # 24: ValidatorCheckerPm2LogErrorsSn24,
+    27: ValidatorCheckerPm2LogErrorsSn27,
     28: ValidatorCheckerPm2LogErrorsSn28,
     30: ValidatorCheckerPm2LogErrorsSn30,
     34: ValidatorCheckerPm2LogErrorsSn34,
