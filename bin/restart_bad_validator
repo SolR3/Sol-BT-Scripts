@@ -42,15 +42,23 @@ def parse_args():
         help="The restart venv path.")
 
     parser.add_argument(
-        "--pm2-process",
+        "--pm2-process", # Keeping arg name singular to avoid confusion.
+        nargs="+",
+        default=[],
+        dest="pm2_processes",
         help="Restart the validator based on pm2 log patterns or stopped pm2 "
              "log output. The value passed to this arg is the name of the pm2 "
-             "process to monitor.")
+             "process to monitor. Multiple pm2 processes may be passed to this "
+             "arg.")
 
     parser.add_argument(
-        "--docker-container",
+        "--docker-container", # Keeping arg name singular to avoid confusion.
+        nargs="+",
+        default=[],
+        dest="docker_containers",
         help="Restart the validator based on docker log patterns. The value "
-             "passed to this arg is the name of the docker container to monitor.")
+             "passed to this arg is the name of the docker container to monitor. "
+             "Multiple docker containers may be passed to this arg.")
 
     parser.add_argument(
         "--local-subtensor",
@@ -876,14 +884,14 @@ def main(options):
     )
 
     if (options.do_check_errors
-        and not (options.pm2_process or options.docker_container)
+        and not (options.pm2_processes or options.docker_containers)
     ):
         bittensor.logging.warning(
             "No --pm2-process or --docker-container is specified. "
             "Not checking for log errors.")
         options.do_check_errors = False
 
-    if options.do_check_stopped_logs and not options.pm2_process:
+    if options.do_check_stopped_logs and not options.pm2_processes:
         bittensor.logging.warning(
             "No --pm2-process is specified. Not checking for "
             "stopped pm2 log output.")
@@ -935,7 +943,8 @@ def main(options):
             time.sleep(sleep_time)
 
         if options.do_check_errors:
-            if options.docker_container:
+            for docker_container in options.docker_containers:
+                options.docker_container = docker_container # Kinda dumb but oh well
                 bittensor.logging.info("")
                 bittensor.logging.info("===================================")
                 bittensor.logging.info("Running docker log errors checker.")
@@ -947,7 +956,8 @@ def main(options):
                                         "starting the next one.")
                 time.sleep(sleep_time)
 
-            if options.pm2_process:
+            for pm2_process in options.pm2_processes:
+                options.pm2_process = pm2_process # Kinda dumb but oh well
                 bittensor.logging.info("")
                 bittensor.logging.info("================================")
                 bittensor.logging.info("Running pm2 log errors checker.")
@@ -960,16 +970,18 @@ def main(options):
                 time.sleep(sleep_time)
 
         if options.do_check_stopped_logs:
-            bittensor.logging.info("")
-            bittensor.logging.info("==================================")
-            bittensor.logging.info("Running stopped pm2 logs checker.")
-            bittensor.logging.info("==================================")
-            bittensor.logging.info("")
-            executor.submit(_run_checker, ValidatorCheckerPm2StoppedLogs, options)
+            for pm2_process in options.pm2_processes:
+                options.pm2_process = pm2_process # Kinda dumb but oh well
+                bittensor.logging.info("")
+                bittensor.logging.info("==================================")
+                bittensor.logging.info("Running stopped pm2 logs checker.")
+                bittensor.logging.info("==================================")
+                bittensor.logging.info("")
+                executor.submit(_run_checker, ValidatorCheckerPm2StoppedLogs, options)
 
-            bittensor.logging.info(f"Sleeping {sleep_time} seconds before "
-                                        "starting the next one.")
-            time.sleep(sleep_time)
+                bittensor.logging.info(f"Sleeping {sleep_time} seconds before "
+                                       "starting the next one.")
+                time.sleep(sleep_time)
         
         if options.do_check_code:
             bittensor.logging.info("")
