@@ -494,6 +494,9 @@ class ValidatorCheckerPm2LogErrorsSn27(ValidatorCheckerPm2LogErrors):
 class ValidatorCheckerPm2LogErrorsSn28(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"Transaction has an ancient birth block"]
 
+class ValidatorCheckerPm2LogErrorsSn29(ValidatorCheckerPm2LogErrors):
+    _generic_patterns = []
+
 class ValidatorCheckerPm2LogErrorsSn30(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"asyncio\.exceptions\.CancelledError"]
 
@@ -850,6 +853,7 @@ PM2_LOGS_VALIDATORS_DICT = {
     # 24: ValidatorCheckerPm2LogErrorsSn24,
     27: ValidatorCheckerPm2LogErrorsSn27,
     28: ValidatorCheckerPm2LogErrorsSn28,
+    29: ValidatorCheckerPm2LogErrorsSn29,
     30: ValidatorCheckerPm2LogErrorsSn30,
     34: ValidatorCheckerPm2LogErrorsSn34,
     38: ValidatorCheckerPm2LogErrorsSn38,
