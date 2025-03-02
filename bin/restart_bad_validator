@@ -485,8 +485,9 @@ class ValidatorCheckerPm2LogErrorsSn18(ValidatorCheckerPm2LogErrors):
 class ValidatorCheckerPm2LogErrorsSn21(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"asyncio\.exceptions\.CancelledError"]
 
-# class ValidatorCheckerPm2LogErrorsSn24(ValidatorCheckerPm2LogErrors):
-#     _subnet_patterns = [r"EOF occurred in violation of protocol"]
+class ValidatorCheckerPm2LogErrorsSn24(ValidatorCheckerPm2LogErrors):
+    _generic_patterns = []
+    # _subnet_patterns = [r"EOF occurred in violation of protocol"]
 
 class ValidatorCheckerPm2LogErrorsSn27(ValidatorCheckerPm2LogErrors):
     _generic_patterns = []
@@ -514,6 +515,9 @@ class ValidatorCheckerPm2LogErrorsSn42(ValidatorCheckerPm2LogErrors):
 
 class ValidatorCheckerPm2LogErrorsSn43(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"Error during validation"]
+
+class ValidatorCheckerPm2LogErrorsSn46(ValidatorCheckerPm2LogErrors):
+    _generic_patterns = []
 
 class ValidatorCheckerPm2LogErrorsSn55(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"websockets\.exceptions\.InvalidStatus"]
@@ -850,7 +854,7 @@ PM2_LOGS_VALIDATORS_DICT = {
     18: ValidatorCheckerPm2LogErrorsSn18,
     21: ValidatorCheckerPm2LogErrorsSn21,
     # 20: ValidatorCheckerPm2LogErrorsSn20,
-    # 24: ValidatorCheckerPm2LogErrorsSn24,
+    24: ValidatorCheckerPm2LogErrorsSn24,
     27: ValidatorCheckerPm2LogErrorsSn27,
     28: ValidatorCheckerPm2LogErrorsSn28,
     29: ValidatorCheckerPm2LogErrorsSn29,
@@ -859,6 +863,7 @@ PM2_LOGS_VALIDATORS_DICT = {
     38: ValidatorCheckerPm2LogErrorsSn38,
     42: ValidatorCheckerPm2LogErrorsSn42,
     43: ValidatorCheckerPm2LogErrorsSn43,
+    46: ValidatorCheckerPm2LogErrorsSn46,
     55: ValidatorCheckerPm2LogErrorsSn55,
 }
 
