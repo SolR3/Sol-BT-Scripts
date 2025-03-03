@@ -10,6 +10,7 @@ import re
 import shlex
 import subprocess
 import tempfile
+import threading
 import time
 
 
@@ -17,9 +18,10 @@ import time
 DEFAULT_UPDATED_THRESHOLD = 1500
 DEFAULT_VTRUST_THRESHOLD = 0.01
 DEFAULT_STOPPED_LOGS_THRESHOLD = 30
-DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME = 2
+DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME = 3
 TOTAL_CHECKS = 6  # TODO: Calculate this instead of hard-coding it.
 
+# Debugging
 DEBUG = False
 
 
@@ -146,6 +148,9 @@ def parse_args():
     return parser.parse_args()
 
 
+error_logs_wait_timer = None
+
+
 class ValidatorChecker:
     _rizzo_hotkey = "5F2CsUDVbRbVMXTh9fAzF9GacjVX7UapvRxidrxe7z8BYckQ"
 
@@ -157,17 +162,21 @@ class ValidatorChecker:
 
         self._run()
 
-    def _log_info(self, message):
-        bittensor.logging.info(f"{self.log_prefix}: {message}")
+    @classmethod
+    def _log_info(cls, message):
+        bittensor.logging.info(f"{cls.log_prefix}: {message}")
 
-    def _log_error(self, message):
-        bittensor.logging.error(f"{self.log_prefix}: {message}")
+    @classmethod
+    def _log_error(cls, message):
+        bittensor.logging.error(f"{cls.log_prefix}: {message}")
 
-    def _log_warning(self, message):
-        bittensor.logging.warning(f"{self.log_prefix}: {message}")
+    @classmethod
+    def _log_warning(cls, message):
+        bittensor.logging.warning(f"{cls.log_prefix}: {message}")
 
-    def _log_debug(self, message):
-        bittensor.logging.debug(f"{self.log_prefix}: {message}")
+    @classmethod
+    def _log_debug(cls, message):
+        bittensor.logging.debug(f"{cls.log_prefix}: {message}")
 
     def _init_setup(self, options):
         raise NotImplementedError("Must be implemented in subclasses.")
@@ -184,7 +193,6 @@ class ValidatorCheckerUpdated(ValidatorChecker):
 
         # Start false in case this is added after a manual restart
         # but before it started setting weights again
-        # TODO - Fix this whole logic
         self._check_for_restart = False
 
         self._subtensor = bittensor.subtensor(network=options.network)
@@ -254,7 +262,6 @@ class ValidatorCheckerVTrust(ValidatorChecker):
 
         # Start false in case this is added after a manual restart
         # but before the vTrust goes back up again
-        # TODO - Fix this whole logic
         self._check_for_restart = False
 
         self._subtensor = bittensor.subtensor(network=options.network)
@@ -379,9 +386,41 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
     _subnet_patterns = []
     _skip_initial_log_lines = 40
 
+    # Inline wait timer class
+    class ErrorLogsWaitTimer:
+        def __init__(self, wait_time):
+            self._timer_lock = threading.Lock()
+            self._wait_timer = None
+            self._wait_event = threading.Event()
+            self._wait_time = wait_time
+
+        def get_waiting_status(self):
+            return self._wait_event.is_set()
+
+        def start_wait_timer(self):
+            with self._timer_lock:
+                self._wait_event.set()
+                if self._wait_timer:
+                    self._wait_timer.cancel()
+                self._wait_timer = threading.Timer(
+                    interval=self._wait_time, function=self._unset_wait_event
+                )
+                self._wait_timer.start()
+                ValidatorCheckerPm2LogErrors._log_info(
+                    f"Stopping pm2 log patterns check. Waiting {self._wait_time} "
+                    "seconds after restart to continue checking log patterns."
+                )
+
+        def _unset_wait_event(self):
+            with self._timer_lock:
+                self._wait_event.clear()
+                ValidatorCheckerPm2LogErrors._log_info(
+                    "Continuing pm2 log patterns check."
+                )
+
     def _init_setup(self, options):
         self._pm2_process = options.pm2_process
-        self._restart_wait_time = options.log_errors_restart_wait_time
+        self._restart_wait_time = options.log_errors_restart_wait_time * 60
 
     def _run(self):
         self._log_info("")
@@ -395,6 +434,8 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
             )
             return
 
+        self._create_error_logs_wait_timer(self._restart_wait_time)
+
         log_regexes = []
         for log_pattern in self._generic_patterns + self._subnet_patterns:
             log_regexes.append(re.compile(log_pattern))
@@ -403,8 +444,6 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
 
         while True:
             _initial_log_lines = 0
-            reactivate_time = 0
-            log_check_active = True
             self._log_info(f"Launching process: \"{command_str}\"")
 
             mfd, sfd = pty.openpty()
@@ -429,14 +468,13 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                         _initial_log_lines += 1
                         self._log_info("Starting log patterns check.")
 
-                    if not log_check_active:
-                        if time.time() < reactivate_time:
-                            if DEBUG:
-                                time_until_reactivate = reactivate_time - time.time()
-                                self._log_debug(f"{time_until_reactivate=}")
-                            continue
-                        log_check_active = True
-                        self._log_info("Continuing log patterns check.")
+                    if error_logs_wait_timer.get_waiting_status():
+                        if DEBUG:
+                            self._log_debug(
+                                f"({self._pm2_process}) Log line skipped. "
+                                "In waiting mode."
+                            )
+                        continue
 
                     for log_regex in log_regexes:
                         match = log_regex.search(line)
@@ -448,15 +486,6 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                             self._restarter.do_restart(
                                 f"Pm2 log output matches a restart pattern: \"{pattern}\""
                             )
-
-                            reactivate_time = (
-                                time.time() + (self._restart_wait_time * 60)
-                            )
-                            log_check_active = False
-                            self._log_info(
-                                "Stopping log patterns check. Waiting "
-                                f"{self._restart_wait_time} minutes after restart "
-                                "to continue checking log patterns.")
                             break
 
             self._log_info(f"Killing process: \"{command_str}\"")
@@ -466,6 +495,14 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
             self._log_info(f"Sleeping {sleep_time} seconds")
             time.sleep(sleep_time)
 
+    @classmethod
+    def _create_error_logs_wait_timer(cls, wait_time):
+        global error_logs_wait_timer
+
+        if not error_logs_wait_timer:
+            error_logs_wait_timer = (
+                cls.ErrorLogsWaitTimer(wait_time)
+            )
 
 class ValidatorCheckerPm2LogErrorsSn1(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"json\.decoder\.JSONDecodeError:"]
@@ -776,6 +813,8 @@ class ValidatorRestarterRsnScript:
 
     def do_restart(self, description, force_notify=False):
         # TODO: acquire threading lock
+        if error_logs_wait_timer:
+            error_logs_wait_timer.start_wait_timer()
         self._do_restart(description, force_notify)
 
     def _do_restart(self, description, force_notify):
@@ -793,7 +832,6 @@ class ValidatorRestarterRsnScript:
 
             self._log_info(f"Packaging venv and script into {restart_script}")
             with open(restart_script, "w") as fd:
-                # TODO - This could probably be cleaned up a little
                 venv_activate = os.path.join(self._restart_venv, "bin/activate")
                 fd.write("#!/bin/bash\n"
                             "\n"
@@ -872,7 +910,6 @@ PM2_LOGS_VALIDATORS_DICT = {
 }
 
 
-# TODO - This can be done better
 DOCKER_LOGS_VALIDATORS_DICT = {
 }
 
