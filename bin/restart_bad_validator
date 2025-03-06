@@ -540,7 +540,8 @@ class ValidatorCheckerPm2LogErrorsSn29(ValidatorCheckerPm2LogErrors):
 
 class ValidatorCheckerPm2LogErrorsSn30(ValidatorCheckerPm2LogErrors):
     _generic_patterns = []
-    _subnet_patterns = [r"asyncio\.exceptions\.CancelledError"]
+    # Temporarily removing this to see if it's ignorable
+    # _subnet_patterns = [r"asyncio\.exceptions\.CancelledError"]
 
 class ValidatorCheckerPm2LogErrorsSn34(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [
