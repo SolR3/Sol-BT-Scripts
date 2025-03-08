@@ -557,8 +557,8 @@ class ValidatorCheckerPm2LogErrorsSn38(ValidatorCheckerPm2LogErrors):
 class ValidatorCheckerPm2LogErrorsSn42(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"EOF occurred in violation of protocol"]
 
-class ValidatorCheckerPm2LogErrorsSn43(ValidatorCheckerPm2LogErrors):
-    _subnet_patterns = [r"Error during validation"]
+# class ValidatorCheckerPm2LogErrorsSn43(ValidatorCheckerPm2LogErrors):
+#     _subnet_patterns = [r"Error during validation"]
 
 class ValidatorCheckerPm2LogErrorsSn46(ValidatorCheckerPm2LogErrors):
     _generic_patterns = []
@@ -909,7 +909,7 @@ PM2_LOGS_VALIDATORS_DICT = {
     36: ValidatorCheckerPm2LogErrorsSn36,
     38: ValidatorCheckerPm2LogErrorsSn38,
     42: ValidatorCheckerPm2LogErrorsSn42,
-    43: ValidatorCheckerPm2LogErrorsSn43,
+    # 43: ValidatorCheckerPm2LogErrorsSn43,
     46: ValidatorCheckerPm2LogErrorsSn46,
     55: ValidatorCheckerPm2LogErrorsSn55,
 }
