@@ -554,6 +554,9 @@ class ValidatorCheckerPm2LogErrorsSn36(ValidatorCheckerPm2LogErrors):
 class ValidatorCheckerPm2LogErrorsSn38(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"\[Errno -2\] Name or service not known"]
 
+class ValidatorCheckerPm2LogErrorsSn41(ValidatorCheckerPm2LogErrors):
+    _generic_patterns = []
+
 class ValidatorCheckerPm2LogErrorsSn42(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"EOF occurred in violation of protocol"]
 
@@ -911,6 +914,7 @@ PM2_LOGS_VALIDATORS_DICT = {
     34: ValidatorCheckerPm2LogErrorsSn34,
     36: ValidatorCheckerPm2LogErrorsSn36,
     38: ValidatorCheckerPm2LogErrorsSn38,
+    41: ValidatorCheckerPm2LogErrorsSn41,
     42: ValidatorCheckerPm2LogErrorsSn42,
     # 43: ValidatorCheckerPm2LogErrorsSn43,
     46: ValidatorCheckerPm2LogErrorsSn46,
