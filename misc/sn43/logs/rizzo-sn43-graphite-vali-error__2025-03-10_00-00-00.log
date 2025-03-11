@@ -1,0 +1,88 @@
+2025-03-09T07:11:58: Traceback (most recent call last):
+2025-03-09T07:11:58:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/base/validator.py", line 330, in run
+2025-03-09T07:11:58:     self.loop.run_until_complete(self.concurrent_forward())
+2025-03-09T07:11:58:   File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+2025-03-09T07:11:58:     return future.result()
+2025-03-09T07:11:58:            ^^^^^^^^^^^^^^^
+2025-03-09T07:11:58:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/base/validator.py", line 265, in concurrent_forward
+2025-03-09T07:11:58:     await asyncio.gather(*coroutines)
+2025-03-09T07:11:58:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/base/validator.py", line 252, in stagger_forward
+2025-03-09T07:11:58:     return await self.forward() # return the co-routine
+2025-03-09T07:11:58:            ^^^^^^^^^^^^^^^^^^^^
+2025-03-09T07:11:58:   File "/root/.bittensor/subnets/Graphite-Subnet/neurons/validator.py", line 72, in forward
+2025-03-09T07:11:58:     return await forward(self)
+2025-03-09T07:11:58:            ^^^^^^^^^^^^^^^^^^^
+2025-03-09T07:11:58:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/validator/forward.py", line 208, in forward
+2025-03-09T07:11:58:     await score_response_obj.get_benchmark()
+2025-03-09T07:11:58:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/validator/reward.py", line 77, in get_benchmark
+2025-03-09T07:11:58:     self.benchmark_path =  await self.solver.solve(self.solver.problem_transformations(self.problem), self._current_num_concurrent_forwards)
+2025-03-09T07:11:58:                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-09T07:11:58:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/solvers/greedy_solver_multi_3.py", line 101, in solve
+2025-03-09T07:11:58:     unvisited.remove(chosen_city)
+2025-03-09T07:11:58: ValueError: list.remove(x): x not in list
+2025-03-09T07:41:58: 
+2025-03-09T07:41:58: Aborted!
+2025-03-09T07:41:58: Traceback (most recent call last):
+2025-03-09T07:41:58:   File "/root/.bittensor/subnets/Graphite-Subnet/neurons/validator.py", line 80, in <module>
+2025-03-09T07:41:58:     time.sleep(5)
+2025-03-09T07:41:58: KeyboardInterrupt
+2025-03-09T14:07:24: Traceback (most recent call last):
+2025-03-09T14:07:24:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/base/validator.py", line 330, in run
+2025-03-09T14:07:24:     self.loop.run_until_complete(self.concurrent_forward())
+2025-03-09T14:07:24:   File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+2025-03-09T14:07:24:     return future.result()
+2025-03-09T14:07:24:            ^^^^^^^^^^^^^^^
+2025-03-09T14:07:24:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/base/validator.py", line 265, in concurrent_forward
+2025-03-09T14:07:24:     await asyncio.gather(*coroutines)
+2025-03-09T14:07:24:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/base/validator.py", line 252, in stagger_forward
+2025-03-09T14:07:24:     return await self.forward() # return the co-routine
+2025-03-09T14:07:24:            ^^^^^^^^^^^^^^^^^^^^
+2025-03-09T14:07:24:   File "/root/.bittensor/subnets/Graphite-Subnet/neurons/validator.py", line 72, in forward
+2025-03-09T14:07:24:     return await forward(self)
+2025-03-09T14:07:24:            ^^^^^^^^^^^^^^^^^^^
+2025-03-09T14:07:24:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/validator/forward.py", line 138, in forward
+2025-03-09T14:07:24:     test_problem_obj = GraphV2ProblemMultiConstrained(problem_type="Metric cmTSP",
+2025-03-09T14:07:24:                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-09T14:07:24:   File "/root/.bittensor/subnets/Graphite-Subnet/venv-sn43-graphite/lib/python3.12/site-packages/pydantic/main.py", line 193, in __init__
+2025-03-09T14:07:24:     self.__pydantic_validator__.validate_python(data, self_instance=self)
+2025-03-09T14:07:24: pydantic_core._pydantic_core.ValidationError: 1 validation error for GraphV2ProblemMultiConstrained
+2025-03-09T14:07:24:   Assertion failed, Single depot definition of cmTSP requires depots to be an array of 0 [type=assertion_error, input_value={'problem_type': 'Metric ...constraint': [574, 484]}, input_type=dict]
+2025-03-09T14:07:24:     For further information visit https://errors.pydantic.dev/2.8/v/assertion_error
+2025-03-09T14:37:24: 
+2025-03-09T14:37:24: Aborted!
+2025-03-09T14:37:24: Traceback (most recent call last):
+2025-03-09T14:37:24:   File "/root/.bittensor/subnets/Graphite-Subnet/neurons/validator.py", line 80, in <module>
+2025-03-09T14:37:24:     time.sleep(5)
+2025-03-09T14:37:24: KeyboardInterrupt
+2025-03-09T15:03:20: 
+2025-03-09T15:03:20: Aborted!
+2025-03-09T17:55:53: Traceback (most recent call last):
+2025-03-09T17:55:53:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/base/validator.py", line 330, in run
+2025-03-09T17:55:53:     self.loop.run_until_complete(self.concurrent_forward())
+2025-03-09T17:55:53:   File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+2025-03-09T17:55:53:     return future.result()
+2025-03-09T17:55:53:            ^^^^^^^^^^^^^^^
+2025-03-09T17:55:53:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/base/validator.py", line 265, in concurrent_forward
+2025-03-09T17:55:53:     await asyncio.gather(*coroutines)
+2025-03-09T17:55:53:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/base/validator.py", line 252, in stagger_forward
+2025-03-09T17:55:53:     return await self.forward() # return the co-routine
+2025-03-09T17:55:53:            ^^^^^^^^^^^^^^^^^^^^
+2025-03-09T17:55:53:   File "/root/.bittensor/subnets/Graphite-Subnet/neurons/validator.py", line 72, in forward
+2025-03-09T17:55:53:     return await forward(self)
+2025-03-09T17:55:53:            ^^^^^^^^^^^^^^^^^^^
+2025-03-09T17:55:53:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/validator/forward.py", line 218, in forward
+2025-03-09T17:55:53:     await score_response_obj.get_benchmark()
+2025-03-09T17:55:53:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/validator/reward.py", line 77, in get_benchmark
+2025-03-09T17:55:53:     self.benchmark_path =  await self.solver.solve(self.solver.problem_transformations(self.problem), self._current_num_concurrent_forwards)
+2025-03-09T17:55:53:                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-03-09T17:55:53:   File "/root/.bittensor/subnets/Graphite-Subnet/graphite/solvers/greedy_solver_multi_3.py", line 101, in solve
+2025-03-09T17:55:53:     unvisited.remove(chosen_city)
+2025-03-09T17:55:53: ValueError: list.remove(x): x not in list
+2025-03-09T17:55:54: 
+2025-03-09T17:55:54: Aborted!
+2025-03-09T17:55:54: Traceback (most recent call last):
+2025-03-09T17:55:54:   File "/root/.bittensor/subnets/Graphite-Subnet/neurons/validator.py", line 80, in <module>
+2025-03-09T17:55:54:     time.sleep(5)
+2025-03-09T17:55:54: KeyboardInterrupt
+2025-03-09T18:50:30: 
+2025-03-09T18:50:30: Aborted!
