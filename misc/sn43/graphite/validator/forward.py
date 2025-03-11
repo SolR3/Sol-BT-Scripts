@@ -86,12 +86,18 @@ async def forward(self):
     prob_select = random.randint(0, len(list(self.loaded_datasets.keys()))-1)
     dataset_ref = list(self.loaded_datasets.keys())[prob_select]
     selected_problem_type_prob = random.random()
+    test_problem_obj = None
     if selected_problem_type_prob < ref_tsp_value:
         n_nodes = random.randint(2000, 5000)
         bt.logging.info(f"n_nodes V2 TSP {n_nodes}")
         bt.logging.info(f"dataset ref {dataset_ref} selected from {list(self.loaded_datasets.keys())}" )
         selected_node_idxs = random.sample(range(len(self.loaded_datasets[dataset_ref]['data'])), n_nodes)
-        test_problem_obj = GraphV2Problem(problem_type="Metric TSP", n_nodes=n_nodes, selected_ids=selected_node_idxs, cost_function="Geom", dataset_ref=dataset_ref)
+        try:
+            test_problem_obj = GraphV2Problem(problem_type="Metric TSP", n_nodes=n_nodes, selected_ids=selected_node_idxs, cost_function="Geom", dataset_ref=dataset_ref)
+        except ValidationError as e:
+            bt.logging.debug(f"GraphV2Problem Validation Error: {e.json()}")
+            bt.logging.debug(e.errors())
+            bt.logging.debug(e)
     elif selected_problem_type_prob < ref_tsp_value + ref_mtsp_value:
         # single depot mTSP
         n_nodes = random.randint(500, 2000)
@@ -99,13 +105,18 @@ async def forward(self):
         bt.logging.info(f"dataset ref {dataset_ref} selected from {list(self.loaded_datasets.keys())}" )
         selected_node_idxs = random.sample(range(len(self.loaded_datasets[dataset_ref]['data'])), n_nodes)
         m = random.randint(2, 10)
-        test_problem_obj = GraphV2ProblemMulti(problem_type="Metric mTSP", 
-                                                n_nodes=n_nodes, 
-                                                selected_ids=selected_node_idxs, 
-                                                cost_function="Geom", 
-                                                dataset_ref=dataset_ref, 
-                                                n_salesmen=m, 
-                                                depots=[0 for _ in range(m)])
+        try:
+            test_problem_obj = GraphV2ProblemMulti(problem_type="Metric mTSP", 
+                                                    n_nodes=n_nodes, 
+                                                    selected_ids=selected_node_idxs, 
+                                                    cost_function="Geom", 
+                                                    dataset_ref=dataset_ref, 
+                                                    n_salesmen=m, 
+                                                    depots=[0 for _ in range(m)])
+        except ValidationError as e:
+            bt.logging.debug(f"GraphV2ProblemMulti Validation Error: {e.json()}")
+            bt.logging.debug(e.errors())
+            bt.logging.debug(e)
     elif selected_problem_type_prob < ref_tsp_value + ref_mtsp_value + ref_mdmtsp_value:
         # multi depot mTSP
         n_nodes = random.randint(500, 2000)
@@ -123,7 +134,7 @@ async def forward(self):
                                                     depots=sorted(random.sample(list(range(n_nodes)), k=m)), 
                                                     single_depot=False)
         except ValidationError as e:
-            bt.logging.debug(f"GraphV2Synapse Validation Error: {e.json()}")
+            bt.logging.debug(f"GraphV2ProblemMulti Validation Error: {e.json()}")
             bt.logging.debug(e.errors())
             bt.logging.debug(e)
     else:
@@ -152,20 +163,21 @@ async def forward(self):
                                                     demand=demand,
                                                     constraint=constraint)
         except ValidationError as e:
-            bt.logging.debug(f"GraphV2Synapse Validation Error: {e.json()}")
+            bt.logging.debug(f"GraphV2ProblemMultiConstrained Validation Error: {e.json()}")
             bt.logging.debug(e.errors())
             bt.logging.debug(e)
     
-    try:
-        graphsynapse_req = GraphV2Synapse(problem=test_problem_obj)
-        if "mTSP" in graphsynapse_req.problem.problem_type:
-            bt.logging.info(f"GraphV2Synapse {graphsynapse_req.problem.problem_type}, n_nodes: {graphsynapse_req.problem.n_nodes}, depots: {graphsynapse_req.problem.depots}\n")
-        else:
-            bt.logging.info(f"GraphV2Synapse {graphsynapse_req.problem.problem_type}, n_nodes: {graphsynapse_req.problem.n_nodes}\n")
-    except ValidationError as e:
-        bt.logging.debug(f"GraphV2Synapse Validation Error: {e.json()}")
-        bt.logging.debug(e.errors())
-        bt.logging.debug(e)
+    if test_problem_obj:
+        try:
+            graphsynapse_req = GraphV2Synapse(problem=test_problem_obj)
+            if "mTSP" in graphsynapse_req.problem.problem_type:
+                bt.logging.info(f"GraphV2Synapse {graphsynapse_req.problem.problem_type}, n_nodes: {graphsynapse_req.problem.n_nodes}, depots: {graphsynapse_req.problem.depots}\n")
+            else:
+                bt.logging.info(f"GraphV2Synapse {graphsynapse_req.problem.problem_type}, n_nodes: {graphsynapse_req.problem.n_nodes}\n")
+        except ValidationError as e:
+            bt.logging.debug(f"GraphV2Synapse Validation Error: {e.json()}")
+            bt.logging.debug(e.errors())
+            bt.logging.debug(e)
 
 
     # prob_select = random.randint(1, 2)
