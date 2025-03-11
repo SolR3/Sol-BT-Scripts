@@ -567,6 +567,7 @@ class ValidatorCheckerPm2LogErrorsSn46(ValidatorCheckerPm2LogErrors):
     _generic_patterns = []
 
 class ValidatorCheckerPm2LogErrorsSn52(ValidatorCheckerPm2LogErrors):
+    _generic_patterns = []
     _subnet_patterns = [r"websockets\.exceptions\.InvalidStatus"]
 
 class ValidatorCheckerPm2LogErrorsSn55(ValidatorCheckerPm2LogErrors):
