@@ -380,6 +380,11 @@ class ValidatorCheckerDockerLogErrors(ValidatorChecker):
             time.sleep(sleep_time)
 
 
+class ValidatorCheckerDockerLogErrorsSn52(ValidatorCheckerDockerLogErrors):
+    _generic_patterns = []
+    _subnet_patterns = [r"websockets\.exceptions\.InvalidStatus"]
+
+
 class ValidatorCheckerPm2LogErrors(ValidatorChecker):
     log_prefix = "CHECK PM2 LOG ERRORS"
     _generic_patterns = [r"\[Errno 32\] Broken pipe"]
@@ -925,6 +930,7 @@ PM2_LOGS_VALIDATORS_DICT = {
 
 
 DOCKER_LOGS_VALIDATORS_DICT = {
+    52: ValidatorCheckerDockerLogErrorsSn52,
 }
 
 
