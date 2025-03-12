@@ -35,9 +35,11 @@ def _parse_args():
 
 class SubnetsChecker:
     _json_file_name = "registered_subnets.json"
-    _discord_monitor_url = (
+    _discord_monitor_urls = (
         "https://discord.com/api/webhooks/1307044814348488704/"
-        "uYEDTqa89CI-NPau5zDyET_JTGt1r2j1u3ARvSEVCKP7-nnOfvCoUoEKwdZCLoiXKsjV"
+        "uYEDTqa89CI-NPau5zDyET_JTGt1r2j1u3ARvSEVCKP7-nnOfvCoUoEKwdZCLoiXKsjV",
+        "https://discord.com/api/webhooks/1328849265765777468/"
+        "yJg07DYWLJyiFZgZPaLGTmFEwiAu2JWW5osyjFVoqlMWT66JBbV9_FOcslvDdtibtcR0"
     )
 
     def __init__(self, network, json_folder):
@@ -137,23 +139,24 @@ class SubnetsChecker:
 
     def _notify(self, message):
         payload = json.dumps({"content": message})
-        monitor_cmd = [
-            "curl", "-H", "Content-Type: application/json",
-            "-d", payload, self._discord_monitor_url
-        ]
-        monitor_cmd_str = " ".join(monitor_cmd)
-        print(f"Running command: '{monitor_cmd_str}'")
-        if DRYRUN:
-            print(message)
-            return
+        for url in self._discord_monitor_urls:
+            monitor_cmd = [
+                "curl", "-H", "Content-Type: application/json",
+                "-d", payload, url
+            ]
+            monitor_cmd_str = " ".join(monitor_cmd)
+            print(f"Running command: '{monitor_cmd_str}'")
+            if DRYRUN:
+                print(message)
+                continue
 
-        try:
-            subprocess.run(monitor_cmd, check=True)
-        except subprocess.CalledProcessError as exc:
-            print("Failed to send discord monitor notification."
-                  f"\n'{monitor_cmd_str}' command failed with error {exc}")
-        else:
-            print("Discord monitor notification successfully sent.")
+            try:
+                subprocess.run(monitor_cmd, check=True)
+            except subprocess.CalledProcessError as exc:
+                print("Failed to send discord monitor notification."
+                    f"\n'{monitor_cmd_str}' command failed with error {exc}")
+            else:
+                print("Discord monitor notification successfully sent.")
 
 
 def format_time(total_time):
