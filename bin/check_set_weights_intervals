@@ -32,21 +32,30 @@ def main(options):
     metagraph = subtensor.metagraph(netuid=options.subnet)
     rizzo_uid = metagraph.hotkeys.index(rizzo_hotkey)
     last_weight_set_block = metagraph.last_update[rizzo_uid]
-    intervals = []
+    interval_blocks = []
+    interval_vtrusts = []
 
     for i in range(options.num):
         try:
-            prev_weight_set_block = subtensor.metagraph(
+            metagraph = subtensor.metagraph(
                 netuid=options.subnet, block=int(last_weight_set_block - 1)
-            ).last_update[rizzo_uid]
+            )
         except:
             print(f"Unable to obtain all {options.num} weight setting intervals.")
             break
-        intervals.append(str(last_weight_set_block - prev_weight_set_block))
+        prev_weight_set_block = metagraph.last_update[rizzo_uid]
+        interval = str(last_weight_set_block - prev_weight_set_block)
+        vtrust = f"{metagraph.Tv[rizzo_uid]:.3f}"
+        max_chars = max(len(interval), len(vtrust))
+        interval_blocks.append(f"{interval:{max_chars}}")
+        interval_vtrusts.append(f"{vtrust:{max_chars}}")
         last_weight_set_block = prev_weight_set_block
 
+    print("")
     print(f"Subnet {options.subnet}:")
-    print(f"{' '.join(reversed(intervals))}")
+    print("Updated Blocks: " + "  ".join(reversed(interval_blocks)))
+    print("Vtrust Values:  " + "  ".join(reversed(interval_vtrusts)))
+    print("")
 
 
 if __name__ == "__main__":
