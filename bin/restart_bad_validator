@@ -589,20 +589,20 @@ class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
     def _run(self):
         self._log_info("")
         self._log_info("Checking for stopped logs.")
-        self._log_info("")
-
-        process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
-        pm2_output = json.loads(process.stdout)
-        for pm2_process in pm2_output:
-            if pm2_process["name"] == self._pm2_process:
-                out_log_file =  pm2_process["pm2_env"]["pm_out_log_path"]
-                error_log_file =  pm2_process["pm2_env"]["pm_err_log_path"]
-                break
-
-        self._log_info(f"Out Log file: {out_log_file}")
-        self._log_info(f"Error Log file: {error_log_file}")
 
         while True:
+            process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
+            pm2_output = json.loads(process.stdout)
+            for pm2_process in pm2_output:
+                if pm2_process["name"] == self._pm2_process:
+                    out_log_file =  pm2_process["pm2_env"]["pm_out_log_path"]
+                    error_log_file =  pm2_process["pm2_env"]["pm_err_log_path"]
+                    break
+
+            self._log_info("")
+            self._log_info(f"Out Log file: {out_log_file}")
+            self._log_info(f"Error Log file: {error_log_file}")
+
             out_log_file_mtime = int(os.path.getmtime(out_log_file))
             error_log_file_mtime = int(os.path.getmtime(error_log_file))
             current_time = int(time.time())
