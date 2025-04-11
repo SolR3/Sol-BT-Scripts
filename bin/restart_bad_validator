@@ -244,7 +244,7 @@ class ValidatorCheckerUpdated(ValidatorChecker):
                                    f">= {self._restart_threshold}")
                     self._log_info("Doing nothing.")
 
-            default_sleep_time = 4320 # 360 blocks
+            default_sleep_time = 4320  # 360 blocks
             seconds_until_threshold = \
                 (self._restart_threshold - rizzo_updated) * 12
             sleep_interval = (seconds_until_threshold
@@ -309,7 +309,7 @@ class ValidatorCheckerVTrust(ValidatorChecker):
                                    f"< {self._restart_threshold}")
                     self._log_info("Doing nothing.")
 
-            sleep_interval = 4320 # 360 blocks
+            sleep_interval = 4320  # 360 blocks
             self._log_info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
 
@@ -691,7 +691,7 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
                         else:
                             self._log_info("Commits are the same. Doing nothing.")
 
-            sleep_interval = 4320 # 360 blocks
+            sleep_interval = 900  # 15 minutes
             self._log_info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
 
@@ -783,7 +783,7 @@ class ValidatorCheckerCodeUpdateLatestTag(ValidatorChecker):
                                 else:
                                     self._log_info("Tags are the same. Doing nothing.")
 
-            sleep_interval = 4320 # 360 blocks
+            sleep_interval = 900  # 15 minutes
             self._log_info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
 
