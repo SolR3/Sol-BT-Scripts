@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+
+# This is a specific restarter for subnet 81. It checks the logs for a specific
+# pattern that signifies that weights have been set. If it sees the pattern
+# then it waits a couple blocks and checks the updated value. If the updated
+# value is above a specific threshold then it assumes that weights were not
+# actually set and restarts the validator. If this ends up being needed on any
+# other subnets then this should be folded into the restart_bad_validator script.
+
+# standard imports
+import argparse
+import json
+import os
+import pty
+import re
+import subprocess
+import tempfile
+import time
+
+
+# Debugging
+DEBUG = False
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-n", "--netuid",
+        type=int,
+        required=True,
+        help="The uid of the subnet.")
+
+    parser.add_argument(
+        "--restart-script",
+        required=True,
+        help="The restart script path.")
+
+    parser.add_argument(
+        "--restart-venv",
+        help="The restart venv path.")
+
+    parser.add_argument(
+        "--docker-container", # Keeping arg name singular to avoid confusion.
+        nargs="+",
+        default=[],
+        dest="docker_containers",
+        help="Restart the validator based on docker log patterns. The value "
+             "passed to this arg is the name of the docker container to monitor. "
+             "Multiple docker containers may be passed to this arg.")
+
+    parser.add_argument(
+        "--local-subtensor",
+        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
+        "When not specified, use the 'finney' network subtensor.")
+
+    parser.add_argument(
+        "--skip-discord-notify",
+        action="store_false",
+        dest="discord_notify",
+        help="When specified, this will skip sending the notification to the "
+             "discord monitor channel.")
+
+    return parser.parse_args()
+
+
+class ValidatorChecker:
+    _rizzo_hotkey = "5F2CsUDVbRbVMXTh9fAzF9GacjVX7UapvRxidrxe7z8BYckQ"
+
+    def __init__(self, options):
+        self._netuid = options.netuid
+        self._restarter = options.restarter_class(self, options)
+
+        self._init_setup(options)
+
+        self._run()
+
+    @classmethod
+    def _log_info(cls, message):
+        bittensor.logging.info(f"{cls.log_prefix}: {message}")
+
+    @classmethod
+    def _log_error(cls, message):
+        bittensor.logging.error(f"{cls.log_prefix}: {message}")
+
+    @classmethod
+    def _log_warning(cls, message):
+        bittensor.logging.warning(f"{cls.log_prefix}: {message}")
+
+    @classmethod
+    def _log_debug(cls, message):
+        bittensor.logging.debug(f"{cls.log_prefix}: {message}")
+
+    def _init_setup(self, options):
+        raise NotImplementedError("Must be implemented in subclasses.")
+
+    def _run(self):
+        raise NotImplementedError("Must be implemented in subclasses.")
+
+
+class ValidatorCheckerWeightsFailed(ValidatorChecker):
+    log_prefix = "CHECK WEIGHTS FAILED"
+    _pattern = r'"message": "Set weights"'
+    _wait_seconds = 24
+    _updated_threshold = 5  # Two or three blocks too high but just to be safe...
+
+    def _init_setup(self, options):
+        self._docker_container = options.docker_container
+
+    def _run(self):
+        self._log_info("")
+        self._log_info("Checking for set weights log pattern.")
+        self._log_info("")
+
+        self._subtensor = bittensor.subtensor(network=options.network)
+        metagraph = self._subtensor.metagraph(netuid=self._netuid)
+        self._rizzo_uid = metagraph.hotkeys.index(self._rizzo_hotkey)
+
+        log_regex = re.compile(self._pattern)
+        command = ["docker", "logs", self._docker_container, "--since", "15s", "--follow"]
+        command_str = " ".join(command)
+
+        while True:
+            self._log_info(f"Launching process: \"{command_str}\"")
+
+            mfd, sfd = pty.openpty()
+            process = subprocess.Popen(
+                command, stdout=sfd, stderr=subprocess.STDOUT)
+            os.close(sfd)
+            master = os.fdopen(mfd)
+            while True:
+                try:
+                    line = master.readline()
+                except:
+                    # The process exited.
+                    self._log_info(f"Process exited: \"{command_str}\"")
+                    break
+                else:
+                    match = log_regex.search(line)
+                    if match:
+                        pattern = match.group()
+                        self._log_info(
+                            f"Log line matches weight setting pattern: \"{pattern}\"\n"
+                            f"{line}\n")
+                        self._log_info(f"Waiting {self._wait_seconds} seconds and checking updated value.")
+                        time.sleep(self._wait_seconds)
+                        rizzo_updated = self._subtensor.blocks_since_last_update(
+                            netuid=self._netuid, uid=self._rizzo_uid
+                        )
+                        self._log_info(f"Rizzo Updated is {rizzo_updated} blocks.")
+                        if rizzo_updated > self._updated_threshold:
+                            self._log_info("Weights were not actually set. Restarting.")
+                            self._restarter.do_restart("Weights failed to set")
+                            break
+                        self._log_info("Weights were set.")
+
+            self._log_info(f"Killing process: \"{command_str}\"")
+            process.kill()
+            master.close()
+            sleep_time = 15
+            self._log_info(f"Sleeping {sleep_time} seconds")
+            time.sleep(sleep_time)
+
+
+class ValidatorRestarterRsnScript:
+    _discord_monitor_url = (
+        "https://discord.com/api/webhooks/1328849265765777468/"
+        "yJg07DYWLJyiFZgZPaLGTmFEwiAu2JWW5osyjFVoqlMWT66JBbV9_FOcslvDdtibtcR0"
+    )
+
+    def __init__(self, checker_obj, options):
+        self._checker_obj = checker_obj
+        self._netuid = options.netuid
+        self._discord_notify = options.discord_notify
+        self._restart_script =  os.path.expanduser(options.restart_script)
+        self._restart_venv = (
+            os.path.expanduser(options.restart_venv)
+            if options.restart_venv else None)
+
+        self._restart_dir = os.path.expanduser(
+            f"~/restart_scripts_sn{options.netuid}")
+        os.makedirs(self._restart_dir, exist_ok=True)
+
+        for restart_file in os.listdir(self._restart_dir):
+            restart_file_path = os.path.join(self._restart_dir, restart_file)
+            if os.path.isfile(restart_file_path):
+                os.unlink(restart_file_path)
+
+    def _log_info(self, message):
+        bittensor.logging.info(f"{self._checker_obj.log_prefix}: {message}")
+
+    def _log_error(self, message):
+        bittensor.logging.error(f"{self._checker_obj.log_prefix}: {message}")
+
+    def do_restart(self, description, force_notify=False):
+        self._do_restart(description, force_notify)
+
+    def _do_restart(self, description, force_notify):
+        script_name =  os.path.basename(__file__)
+
+        self._log_info(f"Restarting subnet {self._netuid}: {description}.")
+        self._log_info(f"Running script: {self._restart_script}")
+        if self._restart_venv:
+            self._log_info(f"Running in venv: {self._restart_venv}")
+
+            fd, restart_script = tempfile.mkstemp(dir=self._restart_dir,
+                prefix = f"restart_{self._netuid}_", suffix=".sh")
+            os.close(fd)
+            os.chmod(restart_script, 0o700)
+
+            self._log_info(f"Packaging venv and script into {restart_script}")
+            with open(restart_script, "w") as fd:
+                venv_activate = os.path.join(self._restart_venv, "bin/activate")
+                fd.write("#!/bin/bash\n"
+                            "\n"
+                            "deactivate\n"
+                            f"source {venv_activate}\n"
+                            f"{self._restart_script}\n")
+            restart_cmd = [restart_script]
+        else:
+            restart_cmd = [self._restart_script]
+            restart_script = None
+
+        restart_cmd_str = " ".join(restart_cmd)
+        self._log_info(f"Running command: '{restart_cmd_str}'")
+        try:
+            subprocess.run(restart_cmd, check=True)
+        except subprocess.CalledProcessError as exc:
+            self._log_error(
+                f"'{restart_cmd_str}' command failed with error: {exc}")
+            self._send_monitor_notification(
+                f"{script_name}: Failed to restart subnet {self._netuid} - {description}",
+                force_notify
+            )
+            return False
+
+        if restart_script:
+            os.unlink(restart_script)
+        self._log_info(f"Subnet '{self._netuid}' successfully restarted.")
+        self._send_monitor_notification(
+            f"{script_name}: Successfully restarted on subnet {self._netuid} - {description}",
+            force_notify
+        )
+
+        return True
+
+    def _send_monitor_notification(self, message, force_notify):
+        if not force_notify and not self._discord_notify:
+            self._log_info("Not sending discord monitor notification.")
+            return
+
+        payload = json.dumps({"content": message})
+        monitor_cmd = [
+            "curl", "-H", "Content-Type: application/json",
+            "-d", payload, self._discord_monitor_url
+        ]
+        monitor_cmd_str = " ".join(monitor_cmd)
+        self._log_info(f"Running command: '{monitor_cmd_str}'")
+        try:
+            subprocess.run(monitor_cmd, check=True)
+        except subprocess.CalledProcessError as exc:
+            self._log_error("Failed to send discord monitor notification.")
+            self._log_error(
+                f"'{monitor_cmd_str}' command failed with error {exc}")
+        else:
+            self._log_info("Discord monitor notification successfully sent.")
+
+
+def main(options):
+    try:
+        bittensor.logging.enable_debug()
+    except AttributeError:
+        bittensor.logging.set_debug(True)
+
+    options.network = (
+        f"ws://subtensor-{options.local_subtensor}.rizzo.network:9944"
+        if options.local_subtensor
+        else "finney"
+    )
+
+    sleep_time = 15
+    script_name =  os.path.basename(__file__)
+    bittensor.logging.info("")
+    bittensor.logging.info(f"Starting {script_name} on subnet {options.netuid}")
+    bittensor.logging.info(f"Sleeping {sleep_time} seconds in case the "
+                            "validator process is just starting.")
+    bittensor.logging.info("")
+    time.sleep(sleep_time)
+
+    options.restarter_class = ValidatorRestarterRsnScript
+    ValidatorCheckerWeightsFailed(options)
+
+
+if __name__ == "__main__":
+    options = parse_args()
+
+    # Importing bittensor here suppresses the --help info
+    import bittensor
+
+    main(options)
