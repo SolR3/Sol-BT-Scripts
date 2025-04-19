@@ -42,8 +42,7 @@ def parse_args():
 
     parser.add_argument(
         "--docker-container", # Keeping arg name singular to avoid confusion.
-        nargs="+",
-        default=[],
+        required=True,
         help="Restart the validator based on docker log patterns. The value "
              "passed to this arg is the name of the docker container to monitor. "
              "Multiple docker containers may be passed to this arg.")
