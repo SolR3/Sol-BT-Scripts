@@ -578,6 +578,10 @@ class ValidatorCheckerPm2LogErrorsSn52(ValidatorCheckerPm2LogErrors):
 class ValidatorCheckerPm2LogErrorsSn55(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"websockets\.exceptions\.InvalidStatus"]
 
+class ValidatorCheckerPm2LogErrorsSn64(ValidatorCheckerPm2LogErrors):
+    _generic_patterns = []
+    _subnet_patterns = [r"Weights set successfully\."]
+
 
 class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
     log_prefix = "CHECK PM2 LOGS STOPPED"
@@ -926,6 +930,7 @@ PM2_LOGS_VALIDATORS_DICT = {
     46: ValidatorCheckerPm2LogErrorsSn46,
     52: ValidatorCheckerPm2LogErrorsSn52,
     55: ValidatorCheckerPm2LogErrorsSn55,
+    64: ValidatorCheckerPm2LogErrorsSn64,
 }
 
 
