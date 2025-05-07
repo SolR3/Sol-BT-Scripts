@@ -770,7 +770,9 @@ class ValidatorCheckerCodeUpdateLatestTag(ValidatorChecker):
                                 self._log_info("")
                                 self._log_info(f"Current tag: {current_tag}")
                                 self._log_info(f"Latest tag: {latest_tag}")
-                                if current_tag != latest_tag:
+                                if latest_tag.endswith("-rc"):
+                                    self._log_info("Latest tag is not a release. Doing nothing.")
+                                elif current_tag != latest_tag:
                                     self._log_info("Tags are different.")
                                     try:
                                         pull_latest_cmd = pull_cmd.format(latest_tag)
