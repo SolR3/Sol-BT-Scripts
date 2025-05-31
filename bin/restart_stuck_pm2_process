@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+
+# standard imports
+import argparse
+from concurrent.futures import ThreadPoolExecutor
+import json
+import os
+import subprocess
+import time
+
+
+def parse_args():
+    class ProcessesAction(argparse.Action):       
+        def __call__(self, parser, namespace, values, option_string=None):
+            value = {}
+            for token in values:
+                parts = token.split(":")
+                if len(parts) != 2:
+                    raise argparse.ArgumentError(
+                        argument=self,
+                        message=f"Badly formed arg: {token}"
+                    )
+                process, minutes = parts
+                try:
+                    minutes = float(minutes)
+                except ValueError:
+                    raise argparse.ArgumentError(
+                        argument=self,
+                        message=f"Badly formed arg: {token}"
+                    )
+                value[process] = minutes
+
+            setattr(namespace, self.dest, value)
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "pm2_process_times",
+        nargs="+",
+        default=[],
+        action=ProcessesAction,
+        help="Restart pm2 processes that have stopped outputting logs after "
+             "a certain amount of time. The arguments should be of the form "
+             "process_name:minutes"
+        )
+
+    parser.add_argument(
+        "--skip-discord-notify",
+        action="store_false",
+        dest="discord_notify",
+        help="When specified, this will skip sending the notification to the "
+             "discord monitor channel.")
+
+    return parser.parse_args()
+
+
+class ProcessChecker:
+    _process_location = "datacenter1.rizzo.network:2292"
+    _discord_monitor_url = (
+        "https://discord.com/api/webhooks/1328849265765777468/"
+        "yJg07DYWLJyiFZgZPaLGTmFEwiAu2JWW5osyjFVoqlMWT66JBbV9_FOcslvDdtibtcR0"
+    )
+
+    def __init__(self, pm2_process, stopped_logs_threshold, discord_notify):
+        self._pm2_process = pm2_process
+        self._restart_threshold = int(round(stopped_logs_threshold * 60))
+        self._discord_notify = discord_notify
+
+        self._run()
+
+    def _log_info(self, message):
+        print(f"INFO - {self._pm2_process}: {message}")
+
+    def _log_error(self, message):
+        print(f"ERROR - {self._pm2_process}: {message}")
+
+    def _run(self):
+        self._log_info("")
+        self._log_info("Checking for stopped logs.")
+
+        while True:
+            process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
+            pm2_output = json.loads(process.stdout)
+            for pm2_process in pm2_output:
+                if pm2_process["name"] == self._pm2_process:
+                    out_log_file =  pm2_process["pm2_env"]["pm_out_log_path"]
+                    error_log_file =  pm2_process["pm2_env"]["pm_err_log_path"]
+                    break
+
+            self._log_info("")
+            self._log_info(f"Out Log file: {out_log_file}")
+            self._log_info(f"Error Log file: {error_log_file}")
+
+            out_log_file_mtime = int(os.path.getmtime(out_log_file))
+            error_log_file_mtime = int(os.path.getmtime(error_log_file))
+            current_time = int(time.time())
+            out_log_file_ctime = time.ctime(out_log_file_mtime)
+            error_log_file_ctime = time.ctime(error_log_file_mtime)
+            current_ctime = time.ctime(current_time)
+            self._log_info("")
+            self._log_info(f"Out Log file last modified: {out_log_file_ctime}")
+            self._log_info(f"Error Log file last modified: {error_log_file_ctime}")
+            self._log_info(f"Current time: {current_ctime}")
+
+            time_diff = current_time - max(out_log_file_mtime, error_log_file_mtime)
+            if time_diff >= self._restart_threshold:
+                self._log_info(f"Time difference {time_diff} seconds "
+                               f">= {self._restart_threshold} seconds")
+                log_minutes = time_diff / 60
+                msg = f"No log output in {log_minutes:.1f} minutes."
+                self._log_error(msg)
+                self._do_restart(msg)
+            else:
+                self._log_info(f"Time difference {time_diff} seconds "
+                               f"< {self._restart_threshold} seconds")
+                self._log_info("Doing nothing.")
+
+            seconds_until_threshold = \
+                (self._restart_threshold - time_diff)
+            sleep_interval = (seconds_until_threshold
+                              if seconds_until_threshold > 0
+                              else self._restart_threshold)
+            self._log_info(f"Sleeping for {sleep_interval} seconds.")
+            time.sleep(sleep_interval)
+
+    def _do_restart(self, msg):
+        self._log_info("Restarting pm2 process.")
+        try:
+            subprocess.run(["pm2", "restart", self._pm2_process])
+        except subprocess.CalledProcessError as exc:
+            self._log_error(
+                f"Restart failed with error: {exc}")
+            self._send_monitor_notification(
+                f"Failed to restart '{self._pm2_process}' on "
+                f"{self._process_location} - {msg}"
+            )
+            return False
+
+        self._log_info("Successfully restarted.")
+        self._send_monitor_notification(
+            f"Successfully restarted '{self._pm2_process}' on "
+            f"{self._process_location} - {msg}"
+        )
+        return True
+
+    def _send_monitor_notification(self, message):
+        if not self._discord_notify:
+            self._log_info("Not sending discord monitor notification.")
+            return
+
+        payload = json.dumps({"content": message})
+        monitor_cmd = [
+            "curl", "-H", "Content-Type: application/json",
+            "-d", payload, self._discord_monitor_url
+        ]
+        monitor_cmd_str = " ".join(monitor_cmd)
+        self._log_info(f"Running command: '{monitor_cmd_str}'")
+        try:
+            subprocess.run(monitor_cmd, check=True)
+        except subprocess.CalledProcessError as exc:
+            self._log_error("Failed to send discord monitor notification.")
+            self._log_error(
+                f"'{monitor_cmd_str}' command failed with error {exc}")
+        else:
+            self._log_info("Discord monitor notification successfully sent.")
+
+
+def _run_checker(checker_class, *args, **kwargs):
+    checker_class(*args, **kwargs)
+
+
+def main(options):
+    script_name =  os.path.basename(__file__)
+    print(f"\nStarting {script_name}.\n")
+
+    wait_seconds = 15
+    with ThreadPoolExecutor(max_workers=len(options.pm2_process_times)) as executor:
+        for pm2_process, stopped_logs_threshold in options.pm2_process_times.items():
+            print("\n===============================")
+            print(f"Running chceck for {pm2_process}.")
+            print("===============================\n")
+
+            executor.submit(
+                _run_checker, ProcessChecker,
+                pm2_process, stopped_logs_threshold, options.discord_notify
+            )
+
+            print(f"Waiting {wait_seconds} seconds.")
+            time.sleep(wait_seconds)
+
+
+if __name__ == "__main__":
+    options = parse_args()
+    main(options)
