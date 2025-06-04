@@ -516,6 +516,9 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
 class ValidatorCheckerPm2LogErrorsSn1(ValidatorCheckerPm2LogErrors):
     _subnet_patterns = [r"json\.decoder\.JSONDecodeError:"]
 
+class ValidatorCheckerPm2LogErrorsSn2(ValidatorCheckerPm2LogErrors):
+    _subnet_patterns = [r"Successfully checked out the latest release"]
+
 class ValidatorCheckerPm2LogErrorsSn4(ValidatorCheckerPm2LogErrors):
     _generic_patterns = []
 
@@ -915,6 +918,7 @@ class ValidatorRestarterRsnScript:
 
 PM2_LOGS_VALIDATORS_DICT = {
     1: ValidatorCheckerPm2LogErrorsSn1,
+    2: ValidatorCheckerPm2LogErrorsSn2,
     4: ValidatorCheckerPm2LogErrorsSn4,
     10: ValidatorCheckerPm2LogErrorsSn10,
     16: ValidatorCheckerPm2LogErrorsSn16,
