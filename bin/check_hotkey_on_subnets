@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+
+# standard imports
+import argparse
+import asyncio
+
+# Bittensor import
+from bittensor.core.async_subtensor import AsyncSubtensor
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-s", "--subnets",
+        nargs="+",
+        type=int,
+        help="When specified, the list of netuids are checked. When not "
+             "specified, all subnets are checked.")
+
+    parser.add_argument(
+        "-d", "--diff",
+        action="store_true",
+        help="When specified, only the subnets with a different hotkey are printed.")
+
+    parser.add_argument(
+        "-n", "--vali-name",
+        choices=["rt21"],
+        default="rizzo",
+        help="Specify a different validator to check.")
+
+    parser.add_argument(
+        "-l", "--local-subtensor",
+        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
+             "When not specified, use the 'finney' network subtensor.")
+
+    return parser.parse_args()
+
+
+async def get_metagraphs(network, netuids):
+    async with AsyncSubtensor(network=network) as subtensor:
+        if not netuids:
+            netuids = await subtensor.get_subnets()
+            netuids = netuids[1:]
+
+        # Get the block to pass to async calls so everything is in sync
+        block = await subtensor.block
+
+        # Get the metagraph for each netuid
+        metagraphs = await asyncio.gather(
+            *[
+                subtensor.metagraph(netuid=netuid, block=block)
+                for netuid in netuids
+            ]
+        )
+    
+    return metagraphs
+
+
+async def main(options):
+    keys = {
+        "rizzo": {
+            "hotkey": "5GduQSUxNJ4E3ReCDoPDtoHHgeoE4yHmnnLpUXBz9DAwmHWV",
+            "coldkey": "5CMEwRYLefRmtJg7zzRyJtcXrQqmspr9B1r1nKySDReA37Z1",
+        },
+        "rt21": {
+            "hotkey": "5Gq2gs4ft5dhhjbHabvVbAhjMCV2RgKmVJKAFCUWiirbRT21",
+            "coldkey": "5GZSAgaVGQqegjhEkxpJjpSVLVmNnE2vx2PFLzr7kBBMKpGQ",
+        },
+    }.get(options.vali_name)
+    main_hotkey = keys["hotkey"]
+    coldkey = keys["coldkey"]
+
+    network = (
+        f"ws://subtensor-{options.local_subtensor}.rizzo.network:9944"
+        if options.local_subtensor
+        else "finney"
+    )
+    netuids = options.subnets 
+
+    metagraphs = await get_metagraphs(network, netuids)
+
+    hotkeys = {}
+    for metagraph in metagraphs:
+        try:
+            index = metagraph.coldkeys.index(coldkey)
+        except ValueError:
+            continue
+        
+        hotkey = metagraph.hotkeys[index]
+        if not options.diff or hotkey != main_hotkey:
+            hotkeys[metagraph.netuid] = hotkey
+
+    print("")
+    print("Hotkeys:")
+    for netuid in sorted(hotkeys):
+        print(f"{netuid} --> {hotkeys[netuid]}")
+
+
+if __name__ == "__main__":
+    options = _parse_args()
+
+    asyncio.run(main(options))
