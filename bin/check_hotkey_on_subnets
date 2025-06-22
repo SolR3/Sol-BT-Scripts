@@ -4,9 +4,6 @@
 import argparse
 import asyncio
 
-# Bittensor import
-from bittensor.core.async_subtensor import AsyncSubtensor
-
 
 def _parse_args():
     parser = argparse.ArgumentParser()
@@ -16,23 +13,27 @@ def _parse_args():
         nargs="+",
         type=int,
         help="When specified, the list of netuids are checked. When not "
-             "specified, all subnets are checked.")
+             "specified, all subnets are checked."
+    )
 
     parser.add_argument(
         "-d", "--diff",
         action="store_true",
-        help="When specified, only the subnets with a different hotkey are printed.")
+        help="When specified, only the subnets with a different hotkey are printed."
+    )
 
     parser.add_argument(
-        "-n", "--vali-name",
+        "-v", "--vali-name",
         choices=["rt21"],
         default="rizzo",
-        help="Specify a different validator to check.")
+        help="Specify a different validator to check."
+    )
 
     parser.add_argument(
         "-l", "--local-subtensor",
         help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
-             "When not specified, use the 'finney' network subtensor.")
+             "When not specified, use the 'finney' network subtensor."
+    )
 
     return parser.parse_args()
 
@@ -142,5 +143,8 @@ async def main(options):
 
 if __name__ == "__main__":
     options = _parse_args()
+
+    # Bittensor import
+    from bittensor.core.async_subtensor import AsyncSubtensor
 
     asyncio.run(main(options))
