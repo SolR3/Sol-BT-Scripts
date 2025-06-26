@@ -129,10 +129,6 @@ def send_discord_notification():
         bittensor.logging.info("Discord monitor notification successfully sent.")
 
 
-
-
-
-
 def main():
     try:
         bittensor.logging.enable_debug()
