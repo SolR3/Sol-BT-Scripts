@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+
+# standard imports
+import json
+import os
+import shlex
+import subprocess
+import time
+
+NETUID = 77
+
+DISCORD_CHANNEL_URL = (
+    "https://discord.com/api/webhooks/1387176080061890570/"
+    "6RR571rn0mqK7Z1mP8WBSVisaW8tBnpsJLgjdZYN5jaK_GqyQNZmdWnN3atKE9DVVz6e"
+)
+
+
+def run():
+    bittensor.logging.info("")
+    bittensor.logging.info("Checking for code updates.")
+    bittensor.logging.info("")
+
+    fetch_cmd = "git fetch"
+    get_local_commit_cmd = "git rev-parse HEAD"
+    get_local_branch_cmd = "git rev-parse --abbrev-ref HEAD"
+    get_remote_commit_str = "git rev-parse origin/{branch}"
+    
+    previous_local_commit = None
+
+    while True:
+        # Get commit then pull then get commit again. First get commit is in case
+        # the code was manually pulled while we were waiting. This ensures that
+        # we are always comparing the correct commits.
+        try:
+            process = subprocess.run(
+                shlex.split(fetch_cmd), check=True, stdout=subprocess.PIPE
+            )
+        except subprocess.CalledProcessError as exc:
+            bittensor.logging.error(
+                f"'{fetch_cmd}' command failed with error: {exc}"
+            )
+        else:
+            try:
+                process = subprocess.run(
+                    shlex.split(get_local_commit_cmd), check=True, stdout=subprocess.PIPE
+                )
+            except subprocess.CalledProcessError as exc:
+                bittensor.logging.error(
+                    f"'{get_local_commit_cmd}' command failed with error: {exc}"
+                )
+            else:
+                local_commit = process.stdout.decode().strip()
+                if local_commit == previous_local_commit:
+                    bittensor.logging.info("")
+                    bittensor.logging.info(f"Local commit: {local_commit}")
+                    bittensor.logging.info(f"Previous commit: {previous_local_commit}")
+                    bittensor.logging.info(
+                        "Git repo has not been updated since last "
+                        "discord notification. Doing nothing."
+                    )
+                    bittensor.logging.info("")
+                else:
+                    try:
+                        process = subprocess.run(
+                            shlex.split(get_local_branch_cmd), check=True, stdout=subprocess.PIPE
+                        )
+                    except subprocess.CalledProcessError as exc:
+                        bittensor.logging.error(
+                            f"'{get_local_branch_cmd}' command failed with error: {exc}"
+                        )
+                    else:
+                        local_branch = process.stdout.decode().strip()
+                        get_remote_commit_cmd = get_remote_commit_str.format(branch=local_branch)
+                        try:
+                            process = subprocess.run(
+                                shlex.split(get_remote_commit_cmd), check=True, stdout=subprocess.PIPE
+                            )
+                        except subprocess.CalledProcessError as exc:
+                            bittensor.logging.error(
+                                f"'{get_remote_commit_cmd}' command failed with error: {exc}"
+                            )
+                        else:
+                            remote_commit = process.stdout.decode().strip()
+                            
+                            bittensor.logging.info("")
+                            bittensor.logging.info(f"Local commit: {local_commit}")
+                            bittensor.logging.info(f"Remote commit: {remote_commit}")
+                            if local_commit != remote_commit:
+                                bittensor.logging.info("Commits changed.")
+                                send_discord_notification()
+                                previous_local_commit = local_commit
+                            else:
+                                bittensor.logging.info("Commits are the same. Doing nothing.")
+                            bittensor.logging.info("")
+
+        sleep_interval = 900  # 15 minutes
+        bittensor.logging.info(f"Sleeping for {sleep_interval} seconds.")
+        time.sleep(sleep_interval)
+
+
+def send_discord_notification():
+    message = (
+        "The git repo for this subnet is out of date. To update:"
+        "\n- Go to the VM on Datacenter-Omni1"
+        "\n- `Ctrl-Alt-F1` to go to the first terminal"
+        "\n- `Ctrl-C` to stop the validator process"
+        "\n- `git pull`"
+        "\n- `just validate` to restart the validator process"
+        "\n"
+        "\nTo stop this monitor script:"
+        "\n- `Ctrl-Alt-F2` to go to the second terminal"
+        "\n- `pm2 stop notify_code_update_sn77`"
+    )
+
+    payload = json.dumps({"content": message})
+    monitor_cmd = [
+        "curl", "-H", "Content-Type: application/json",
+        "-d", payload, DISCORD_CHANNEL_URL
+    ]
+    monitor_cmd_str = " ".join(monitor_cmd)
+    bittensor.logging.info(f"Running command: '{monitor_cmd_str}'")
+    try:
+        subprocess.run(monitor_cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        bittensor.logging.error("Failed to send discord monitor notification.")
+        bittensor.logging.error(
+            f"'{monitor_cmd_str}' command failed with error {exc}")
+    else:
+        bittensor.logging.info("Discord monitor notification successfully sent.")
+
+
+
+
+
+
+def main():
+    try:
+        bittensor.logging.enable_debug()
+    except AttributeError:
+        bittensor.logging.set_debug(True)
+
+    script_name =  os.path.basename(__file__)
+    bittensor.logging.info("")
+    bittensor.logging.info(f"Starting {script_name} on subnet {NETUID}")
+    bittensor.logging.info("")
+
+    run()
+
+
+if __name__ == "__main__":
+    # Importing bittensor here suppresses the --help info
+    import bittensor
+
+    main()
