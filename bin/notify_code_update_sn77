@@ -32,9 +32,7 @@ def run():
         # the code was manually pulled while we were waiting. This ensures that
         # we are always comparing the correct commits.
         try:
-            process = subprocess.run(
-                shlex.split(fetch_cmd), check=True, stdout=subprocess.PIPE
-            )
+            subprocess.run(shlex.split(fetch_cmd), check=True)
         except subprocess.CalledProcessError as exc:
             bittensor.logging.error(
                 f"'{fetch_cmd}' command failed with error: {exc}"
