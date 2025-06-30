@@ -155,6 +155,15 @@ class ValidatorChecker:
     # _rizzo_hotkey = "5GduQSUxNJ4E3ReCDoPDtoHHgeoE4yHmnnLpUXBz9DAwmHWV"
     _rizzo_coldkey = "5CMEwRYLefRmtJg7zzRyJtcXrQqmspr9B1r1nKySDReA37Z1"
 
+    # This is a fix to handle the subnets on which we're registered on
+    # multiple uids.
+    _multi_uid_hotkeys = {
+        20: "5ExaAP3ENz3bCJufTzWzs6J6dCWuhjjURT8AdZkQ5qA4As2o",
+        86: "5F9FAMhhzZJBraryVEp1PTeaL5bgjRKcw1FSyuvRLmXBds86",
+        123: "5GzaskJbqJvGGXtu2124i9YLgHfMDDr7Pduq6xfYYgkJs123",
+        124: "5FKk6ucEKuKzLspVYSv9fVHonumxMJ33MdHqbVjZi2NUs124",
+    }
+
     def __init__(self, options):
         self._netuid = options.netuid
         self._restarter = options.restarter_class(self, options)
@@ -162,6 +171,14 @@ class ValidatorChecker:
         self._init_setup(options)
 
         self._run()
+
+    def _get_rizzo_uid(self, metagraph):
+        if metagraph.netuid in self._multi_uid_hotkeys:
+            return metagraph.hotkeys.index(
+                self._multi_uid_hotkeys[metagraph.netuid]
+            )
+
+        return metagraph.coldkeys.index(self._rizzo_coldkey)
 
     @classmethod
     def _log_info(cls, message):
@@ -198,7 +215,7 @@ class ValidatorCheckerUpdated(ValidatorChecker):
 
         self._subtensor = bittensor.subtensor(network=options.network)
         metagraph = self._subtensor.metagraph(netuid=self._netuid)
-        self._rizzo_uid = metagraph.coldkeys.index(self._rizzo_coldkey)
+        self._rizzo_uid = self._get_rizzo_uid(metagraph)
 
     def _run(self):
         self._log_info("")
@@ -267,7 +284,7 @@ class ValidatorCheckerVTrust(ValidatorChecker):
 
         self._subtensor = bittensor.subtensor(network=options.network)
         metagraph = self._subtensor.metagraph(netuid=self._netuid)
-        self._rizzo_uid = metagraph.coldkeys.index(self._rizzo_coldkey)
+        self._rizzo_uid = self._get_rizzo_uid(metagraph)
 
     def _run(self):
         self._log_info("")
