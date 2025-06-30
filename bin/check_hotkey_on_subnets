@@ -5,6 +5,16 @@ import argparse
 import asyncio
 
 
+# This is a fix to handle the subnets on which we're registered on
+# multiple uids.
+MULTI_UID_HOTKEYS = {
+    20: "5ExaAP3ENz3bCJufTzWzs6J6dCWuhjjURT8AdZkQ5qA4As2o",
+    86: "5F9FAMhhzZJBraryVEp1PTeaL5bgjRKcw1FSyuvRLmXBds86",
+    123: "5GzaskJbqJvGGXtu2124i9YLgHfMDDr7Pduq6xfYYgkJs123",
+    124: "5FKk6ucEKuKzLspVYSv9fVHonumxMJ33MdHqbVjZi2NUs124",
+}
+
+
 def _parse_args():
     parser = argparse.ArgumentParser()
 
@@ -81,59 +91,19 @@ async def main(options):
 
     metagraphs = await get_metagraphs(network, netuids)
 
-    # The two discrepancies we want to catch are:
-    # 1) If the main hotkey exists on a subnet but the coldkey doesn't.
-    # 2) If both exist and the uids are different between the two.
-    missing_coldkeys = []
-    mismatched_keys = []
-
     hotkeys = []
     for metagraph in metagraphs:
-        try:
-            main_hotkey_index = metagraph.hotkeys.index(main_hotkey)
-        except ValueError:
-            main_hotkey_index = None
+        if metagraph.netuid in MULTI_UID_HOTKEYS:
+            hotkey = MULTI_UID_HOTKEYS[metagraph.netuid]
+        else:
+            try:
+                coldkey_index = metagraph.coldkeys.index(coldkey)
+            except ValueError:
+                continue
+            hotkey = metagraph.hotkeys[coldkey_index]
 
-        try:
-            coldkey_index = metagraph.coldkeys.index(coldkey)
-        except ValueError:
-            if main_hotkey_index is not None:
-                # 1) Main hotkey exists on a subnet but the coldkey doesn't.
-                missing_coldkeys.append((
-                    metagraph.netuid,
-                    int(metagraph.uids[main_hotkey_index]),
-                    metagraph.coldkeys[main_hotkey_index],
-                ))
-            continue
-
-        if main_hotkey_index and main_hotkey_index != coldkey_index:
-            # 2) Both exist and the uids are different between the two.
-            mismatched_keys.append((
-                metagraph.netuid,
-                int(metagraph.uids[coldkey_index]),
-                metagraph.hotkeys[coldkey_index],
-                int(metagraph.uids[main_hotkey_index]),
-                metagraph.coldkeys[main_hotkey_index],
-            ))
-            continue
-
-        hotkey = metagraph.hotkeys[coldkey_index]
         if not options.diff or hotkey != main_hotkey:
             hotkeys.append((metagraph.netuid, hotkey))
-
-    if missing_coldkeys:
-        print("")
-        print("Missing coldkeys:")
-        for netuid, uid, ck in missing_coldkeys:
-            print(f"{netuid}: {uid} --> {ck}")
-    
-    if mismatched_keys:
-        print("")
-        print("Mismatched keys:")
-        for netuid, cuid, hk, huid, ck in mismatched_keys:
-            print(f"{netuid}:")
-            print(f"    ck: {cuid} --> {hk}")
-            print(f"    hk: {huid} --> {ck}")
 
     print("")
     print("Hotkeys:")
