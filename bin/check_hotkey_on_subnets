@@ -64,14 +64,14 @@ async def get_metagraphs(network, netuids):
                 for netuid in netuids
             ]
         )
-    
+
     return metagraphs
 
 
 async def main(options):
     keys = {
         "rizzo": {
-            "hotkey": "5GduQSUxNJ4E3ReCDoPDtoHHgeoE4yHmnnLpUXBz9DAwmHWV",
+            "hotkey": "5FtBncJvGhxjBs4aFn2pid6aur9tBUuo9QR7sHe5DkoRizzo",
             "coldkey": "5CMEwRYLefRmtJg7zzRyJtcXrQqmspr9B1r1nKySDReA37Z1",
         },
         "rt21": {
