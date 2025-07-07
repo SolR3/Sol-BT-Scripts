@@ -404,7 +404,7 @@ class ValidatorCheckerDockerLogErrorsSn52(ValidatorCheckerDockerLogErrors):
 
 class ValidatorCheckerDockerLogErrorsSn64(ValidatorCheckerDockerLogErrors):
     _generic_patterns = []
-    _subnet_patterns = [r"Weights set successfully\."]
+    _subnet_patterns = []  # [r"Weights set successfully\."]
 
 
 class ValidatorCheckerPm2LogErrors(ValidatorChecker):
