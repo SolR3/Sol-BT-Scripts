@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+
+# standard imports
+import argparse
+from collections import namedtuple
+import json
+import os
+import time
+
+
+LOCAL_TIMEZONE = "MST7MDT"
+JSON_FILE_NAME = "subtensor_status.json"
+TIMESTAMP_FILE_NAME = "timestamp.json"
+LOCAL_SUBTENSORS = [
+    "cali",
+    "candyland",
+    "la",
+    "moonbase",
+    "titan",
+    "datacenter01",
+    "lite-archive",
+    "archive",
+]
+FINNEY_INTERVAL = 60  # In minutes
+
+SubtensorData = namedtuple("SubtensorData", ["name", "block_diff", "error"])
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-j", "--json-folder",
+        help="The json folder in which to write the json files. If this is specified "
+             "then a json is written sontaining each subtensor's status. If not "
+             "specified then each subtensor's status is printed to stdout."
+    )
+
+    parser.add_argument(
+        "-o", "--run-once",
+        action="store_true",
+        help="When specified, the data gathering and json write happnes only once."
+    )
+
+    parser.add_argument(
+        "-i", "--interval",
+        type=float,
+        default=5,
+        help="The number of minutes between validator data gathering."
+    )
+
+    return parser.parse_args()
+
+
+def format_time(total_time):
+    m = total_time/60
+    minutes = int(m)
+    seconds = round((m - minutes)*60)
+
+    runtime_text = [f"{minutes} minutes"] if minutes else []
+    if seconds:
+        runtime_text += [f"{seconds} seconds"]
+    runtime_text = ", ".join(runtime_text)
+
+    return runtime_text
+
+
+def write_timestamp(json_folder):
+    os.environ["TZ"] = LOCAL_TIMEZONE
+    time.tzset()
+
+    max_file_time = 0
+    json_base, json_ext = os.path.splitext(JSON_FILE_NAME)
+    for _file in os.listdir(json_folder):
+        file_base, file_ext = os.path.splitext(_file)
+        if not file_base.startswith(json_base) or file_ext != json_ext:
+            continue
+
+        json_file = os.path.join(json_folder, _file)
+        file_time = os.path.getmtime(json_file)
+        if file_time > max_file_time:
+            max_file_time = file_time
+    
+    timestamp = time.ctime(max_file_time)
+    timestamp_file = os.path.join(json_folder, TIMESTAMP_FILE_NAME)
+    print(f"\nWriting timestamp file: {timestamp_file}")
+    with open(timestamp_file, "w") as fd:
+            json.dump(timestamp, fd)
+
+
+def write_json_file(subtensor_data, json_folder):
+    # Get a serializable version of the data
+    subtensor_json_data = []
+    for subtensor in subtensor_data:
+        subtensor_json_data.append(dict(
+            [(f, getattr(subtensor, f)) for f in subtensor._fields]
+        ))
+    
+    # First remove all existing json files
+    for file_name in os.listdir(json_folder):
+        json_file = os.path.join(json_folder, file_name)
+        if (
+            not os.path.isfile(json_file)
+            or os.path.splitext(json_file)[1] != ".json"
+        ):
+            continue
+        print(f"Removing {json_file}")
+        os.unlink(json_file)
+
+    # Then write the new data json file
+    json_file = os.path.join(json_folder, JSON_FILE_NAME)
+    print(f"\nWriting data to file: {json_file}")
+    with open(json_file, "w") as fd:
+        json.dump(subtensor_json_data, fd, indent=4)
+
+    # Write the timestamp file
+    write_timestamp(json_folder)
+
+
+def print_subtensor_statuses(subtensor_data):
+    from rich.console import Console
+    from rich.text import Text
+
+    red = "9"
+    green = "10"
+    prefix = ""  # "subtensor-"
+    name_padding = max([len(s.name) for s in subtensor_data]) + len(prefix)
+
+    console = Console()
+    text = Text()
+
+    for subtensor in subtensor_data:
+        subtensor_name = f"{prefix}{subtensor.name}".rjust(name_padding)
+
+        if subtensor.error:
+            subtensor_status = subtensor.error
+            subtensor_error = True
+        elif subtensor.block_diff > 0:
+            subtensor_status = f"{subtensor.block_diff} blocks behind finney"
+            subtensor_error = True
+        else:
+            subtensor_status = "Operational"
+            subtensor_error = False
+
+        text_color = red if subtensor_error else green
+        text_style = f"color({text_color})"
+
+        text.append("\n")
+        text.append(
+            f"{subtensor_name} - {subtensor_status}",
+            style=text_style
+        )
+
+    console.print(text)
+
+
+def main(options):
+    minutes_until_get_finney_block = 0
+    interval_seconds = round(options.interval * 60)
+
+    while True:
+        print("\nGetting subtensor statuses.")
+        start_time = time.time()
+        subtensor_data = []
+
+        if minutes_until_get_finney_block <= 0:
+            print("Getting finney block.")
+            try:
+                with bittensor.subtensor() as subtensor:
+                    finney_block = subtensor.block
+            except Exception as err:
+                finney_block = None
+                print("\nERROR: Failed to get finney block.")
+                print(f"{type(err).__name__}: {err}\n")
+            minutes_until_get_finney_block = FINNEY_INTERVAL
+        else:
+            print(
+                "Not getting finney block. "
+                f"{minutes_until_get_finney_block} minutes left."
+            )
+
+        delay_start = time.time()
+        for subtensor_name in LOCAL_SUBTENSORS:
+            network = f"ws://subtensor-{subtensor_name}.rizzo.network:9944"
+            print(f"Getting block for {network}")
+            try:
+                with bittensor.subtensor(network=network) as subtensor:
+                    block = subtensor.block
+                delay_blocks = int((time.time() - delay_start) / 12)
+                if finney_block is not None:
+                    block_diff = int(finney_block - block) + delay_blocks
+                else:
+                    block_diff = None
+                error = None
+            except Exception as err:
+                error = f"{type(err).__name__}: {err}"
+                block_diff = None
+
+            subtensor_data.append(
+                SubtensorData(
+                    name=subtensor_name,
+                    block_diff=block_diff,
+                    error=error,
+                )
+            )
+
+        print("")
+        if options.json_folder:
+            write_json_file(subtensor_data, options.json_folder)
+        else:
+            print_subtensor_statuses(subtensor_data)
+
+        total_seconds = round(time.time() - start_time)
+        total_time_formatted = format_time(total_seconds)
+        print(f"\nSubnet data gathering took {total_time_formatted}.\n")
+
+        if options.run_once:
+            break
+
+        wait_seconds = interval_seconds - total_seconds
+        if wait_seconds > 0:
+            wait_time_formatted = format_time(wait_seconds)
+            print(f"Waiting {wait_time_formatted}.")
+            time.sleep(wait_seconds)
+
+        minutes_until_get_finney_block -= options.interval
+        if finney_block is not None:
+            finney_block += options.interval * 5  # 5 blocks per minute
+
+
+if __name__ == "__main__":
+    options = _parse_args()
+
+    # Bittensor import
+    import bittensor
+
+    main(options)
