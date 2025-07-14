@@ -21,7 +21,7 @@ LOCAL_SUBTENSORS = [
     "lite-archive",
     "archive",
 ]
-FINNEY_INTERVAL = 60  # In minutes
+FINNEY_INTERVAL = 120  # In minutes
 
 SubtensorData = namedtuple("SubtensorData", ["name", "block_diff", "error"])
 
