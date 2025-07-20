@@ -37,16 +37,11 @@ def _parse_args():
     )
 
     parser.add_argument(
-        "-o", "--run-once",
-        action="store_true",
-        help="When specified, the data gathering and json write happnes only once."
-    )
-
-    parser.add_argument(
         "-i", "--interval",
         type=float,
-        default=5,
-        help="The number of minutes between validator data gathering."
+        default=0,
+        help="The number of minutes between validator data gathering. If 0 or not "
+             "specified then the data is gathered only once."
     )
 
     return parser.parse_args()
@@ -186,15 +181,16 @@ def main(options):
             try:
                 with bittensor.subtensor(network=network) as subtensor:
                     block = subtensor.block
+            except Exception as err:
+                error = f"{type(err).__name__}: {err}"
+                block_diff = None
+            else:
                 delay_blocks = int((time.time() - delay_start) / 12)
                 if finney_block is not None:
                     block_diff = int(finney_block - block) + delay_blocks
                 else:
                     block_diff = None
                 error = None
-            except Exception as err:
-                error = f"{type(err).__name__}: {err}"
-                block_diff = None
 
             subtensor_data.append(
                 SubtensorData(
@@ -214,7 +210,8 @@ def main(options):
         total_time_formatted = format_time(total_seconds)
         print(f"\nSubnet data gathering took {total_time_formatted}.\n")
 
-        if options.run_once:
+        # Only gather the data once.
+        if not interval_seconds:
             break
 
         wait_seconds = interval_seconds - total_seconds
