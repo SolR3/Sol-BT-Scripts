@@ -488,19 +488,17 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                 else:
                     if _initial_log_lines < self._skip_initial_log_lines:
                         _initial_log_lines += 1
-                        if DEBUG:
-                            self._log_debug(f"{_initial_log_lines=}")
+                        self._log_debug(f"{_initial_log_lines=}")
                         continue
                     elif _initial_log_lines == self._skip_initial_log_lines:
                         _initial_log_lines += 1
                         self._log_info("Starting log patterns check.")
 
                     if error_logs_wait_timer.get_waiting_status():
-                        if DEBUG:
-                            self._log_debug(
-                                f"({self._pm2_process}) Log line skipped. "
-                                "In waiting mode."
-                            )
+                        self._log_debug(
+                            f"({self._pm2_process}) Log line skipped. "
+                            "In waiting mode."
+                        )
                         continue
 
                     for log_regex in log_regexes:
@@ -975,10 +973,10 @@ def _run_checker(checker_class, options):
 
 
 def main(options):
-    try:
+    if DEBUG:
         bittensor.logging.enable_debug()
-    except AttributeError:
-        bittensor.logging.set_debug(True)
+    else:
+        bittensor.logging.enable_info()
 
     options.network = (
         f"ws://subtensor-{options.local_subtensor}.rizzo.network:9944"
