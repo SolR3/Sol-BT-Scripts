@@ -175,7 +175,7 @@ except Exception as err:
     if debug:
         print(f"\nRunning script:\n=========={python_script}==========\n")
 
-    command = ["python", "-c", python_script]
+    command = ["python3", "-c", python_script]
     result = subprocess.run(command, capture_output=True)
 
     if result.returncode:
