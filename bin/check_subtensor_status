@@ -281,6 +281,11 @@ def main(options):
             wait_time_formatted = format_time(wait_seconds)
             print(f"Waiting {wait_time_formatted}.")
             time.sleep(wait_seconds)
+        else:
+            print(
+                f"Processing took {total_seconds} seconds which is longer "
+                f"than {interval_seconds} seconds. Not waiting."
+            )
 
         minutes_until_get_finney_block -= options.interval
         if finney_block is not None:
