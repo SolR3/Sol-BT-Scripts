@@ -44,6 +44,18 @@ def _parse_args():
              "specified then the data is gathered only once."
     )
 
+    parser.add_argument(
+        "-p", "--subprocess",
+        action="store_true",
+        help="When specified, run the bittensor calls in subprocesses."
+    )
+
+    parser.add_argument(
+        "-d", "--debug",
+        action="store_true",
+        help="When specified, print debug info for the data gathering subprocess."
+    )
+
     return parser.parse_args()
 
 
@@ -75,7 +87,7 @@ def write_timestamp(json_folder):
         file_time = os.path.getmtime(json_file)
         if file_time > max_file_time:
             max_file_time = file_time
-    
+
     timestamp = time.ctime(max_file_time)
     timestamp_file = os.path.join(json_folder, TIMESTAMP_FILE_NAME)
     print(f"\nWriting timestamp file: {timestamp_file}")
@@ -90,7 +102,7 @@ def write_json_file(subtensor_data, json_folder):
         subtensor_json_data.append(dict(
             [(f, getattr(subtensor, f)) for f in subtensor._fields]
         ))
-    
+
     # First remove all existing json files
     for file_name in os.listdir(json_folder):
         json_file = os.path.join(json_folder, file_name)
@@ -149,7 +161,38 @@ def print_subtensor_statuses(subtensor_data):
     console.print(text)
 
 
+def run_in_subprocess(network, debug):
+    import subprocess
+
+    python_script = """
+import bittensor
+try:
+    with bittensor.subtensor(network="%s") as subtensor:
+        print(subtensor.block)
+except Exception as err:
+    print(f"{type(err).__name__}: {err}")
+""" % network
+    if debug:
+        print(f"\nRunning script:\n=========={python_script}==========\n")
+
+    command = ["python", "-c", python_script]
+    result = subprocess.run(command, capture_output=True)
+
+    if result.returncode:
+        print(f"\nERROR: Failed to obtain block for {network}\n")
+        return "Block gathering failed."
+
+    stdout = result.stdout.decode()
+    stderr = result.stderr.decode()
+    if debug:
+        print(f"\nstdout:\n{stdout}")
+        print(f"stderr:\n{stderr}\n")
+
+    return stdout.strip()
+
+
 def main(options):
+    debug = options.debug
     minutes_until_get_finney_block = 0
     interval_seconds = round(options.interval * 60)
 
@@ -160,13 +203,22 @@ def main(options):
 
         if minutes_until_get_finney_block <= 0:
             print("Getting finney block.")
-            try:
-                with bittensor.subtensor() as subtensor:
-                    finney_block = subtensor.block
-            except Exception as err:
-                finney_block = None
-                print("\nERROR: Failed to get finney block.")
-                print(f"{type(err).__name__}: {err}\n")
+            if options.subprocess:
+                result = run_in_subprocess("finney", debug)
+                try:
+                    finney_block = int(result)
+                except ValueError:
+                    finney_block = None
+                    print("\nERROR: Failed to get finney block.")
+                    print(result)
+            else:
+                try:
+                    with bittensor.subtensor() as subtensor:
+                        finney_block = subtensor.block
+                except Exception as err:
+                    finney_block = None
+                    print("\nERROR: Failed to get finney block.")
+                    print(f"{type(err).__name__}: {err}\n")
             minutes_until_get_finney_block = FINNEY_INTERVAL
         else:
             print(
@@ -178,19 +230,29 @@ def main(options):
         for subtensor_name in LOCAL_SUBTENSORS:
             network = f"ws://subtensor-{subtensor_name}.rizzo.network:9944"
             print(f"Getting block for {network}")
-            try:
-                with bittensor.subtensor(network=network) as subtensor:
-                    block = subtensor.block
-            except Exception as err:
-                error = f"{type(err).__name__}: {err}"
-                block_diff = None
+            if options.subprocess:
+                result = run_in_subprocess(network, debug)
+                try:
+                    block = int(result)
+                except ValueError:
+                    block = None
+                    error = result
             else:
+                try:
+                    with bittensor.subtensor(network=network) as subtensor:
+                        block = subtensor.block
+                except Exception as err:
+                    block = None
+                    error = f"{type(err).__name__}: {err}"
+            if block is not None:
                 delay_blocks = int((time.time() - delay_start) / 12)
                 if finney_block is not None:
                     block_diff = int(finney_block - block) + delay_blocks
                 else:
                     block_diff = None
                 error = None
+            else:
+                block_diff = None
 
             subtensor_data.append(
                 SubtensorData(
@@ -228,7 +290,8 @@ def main(options):
 if __name__ == "__main__":
     options = _parse_args()
 
-    # Bittensor import
-    import bittensor
+    if not options.subprocess:
+        # Bittensor import
+        import bittensor
 
     main(options)
