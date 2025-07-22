@@ -161,34 +161,24 @@ def print_subtensor_statuses(subtensor_data):
     console.print(text)
 
 
+def get_subtensor_block(network):
+    # Testing multiprocessing module to see if it keeps the bittensor
+    # function calls from lagging over time.
+    try:
+        with bittensor.subtensor(network=network) as subtensor:
+            mp_queue.put(subtensor.block)
+    except Exception as err:
+        mp_queue.put(f"{type(err).__name__}: {err}")
+
+
 def run_in_subprocess(network, debug):
-    import subprocess
+    # Testing multiprocessing module to see if it keeps the bittensor
+    # function calls from lagging over time.
+    args = [network]
+    with multiprocessing.Pool(processes=1) as pool:
+        pool.apply(get_subtensor_block, args)
 
-    python_script = """
-import bittensor
-try:
-    with bittensor.subtensor(network="%s") as subtensor:
-        print(subtensor.block)
-except Exception as err:
-    print(f"{type(err).__name__}: {err}")
-""" % network
-    if debug:
-        print(f"\nRunning script:\n=========={python_script}==========\n")
-
-    command = ["python3", "-c", python_script]
-    result = subprocess.run(command, capture_output=True)
-
-    if result.returncode:
-        print(f"\nERROR: Failed to obtain block for {network}\n")
-        return "Block gathering failed."
-
-    stdout = result.stdout.decode()
-    stderr = result.stderr.decode()
-    if debug:
-        print(f"\nstdout:\n{stdout}")
-        print(f"stderr:\n{stderr}\n")
-
-    return stdout.strip()
+    return mp_queue.get()
 
 
 def main(options):
@@ -295,8 +285,11 @@ def main(options):
 if __name__ == "__main__":
     options = _parse_args()
 
-    if not options.subprocess:
-        # Bittensor import
-        import bittensor
+    if options.subprocess:
+        import multiprocessing
+        mp_queue = multiprocessing.Queue()
+
+    # Bittensor import
+    import bittensor
 
     main(options)
