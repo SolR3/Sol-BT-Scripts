@@ -20,6 +20,9 @@ LOCAL_SUBTENSORS = [
     "datacenter01",
     "lite-archive",
     "archive",
+    "ws://remote-full-archive.rizzo.network:9944",
+    "ws://remote-full-archive.rizzo.network:9945",
+    "ws://remote-full-archive.rizzo.network:9946",
 ]
 FINNEY_INTERVAL = 120  # In minutes
 
@@ -48,12 +51,6 @@ def _parse_args():
         "-p", "--subprocess",
         action="store_true",
         help="When specified, run the bittensor calls in subprocesses."
-    )
-
-    parser.add_argument(
-        "-d", "--debug",
-        action="store_true",
-        help="When specified, print debug info for the data gathering subprocess."
     )
 
     return parser.parse_args()
@@ -130,14 +127,13 @@ def print_subtensor_statuses(subtensor_data):
 
     red = "9"
     green = "10"
-    prefix = ""  # "subtensor-"
-    name_padding = max([len(s.name) for s in subtensor_data]) + len(prefix)
+    name_padding = max([len(s.name) for s in subtensor_data])
 
     console = Console()
     text = Text()
 
     for subtensor in subtensor_data:
-        subtensor_name = f"{prefix}{subtensor.name}".rjust(name_padding)
+        subtensor_network = f"{subtensor.name}".ljust(name_padding)
 
         if subtensor.error:
             subtensor_status = subtensor.error
@@ -154,7 +150,7 @@ def print_subtensor_statuses(subtensor_data):
 
         text.append("\n")
         text.append(
-            f"{subtensor_name} - {subtensor_status}",
+            f"{subtensor_network} - {subtensor_status}",
             style=text_style
         )
 
@@ -171,7 +167,7 @@ def get_subtensor_block(network):
         mp_queue.put(f"{type(err).__name__}: {err}")
 
 
-def run_in_subprocess(network, debug):
+def run_in_subprocess(network):
     # Testing multiprocessing module to see if it keeps the bittensor
     # function calls from lagging over time.
     args = [network]
@@ -182,7 +178,6 @@ def run_in_subprocess(network, debug):
 
 
 def main(options):
-    debug = options.debug
     minutes_until_get_finney_block = 0
     interval_seconds = round(options.interval * 60)
 
@@ -194,7 +189,7 @@ def main(options):
         if minutes_until_get_finney_block <= 0:
             print("Getting finney block.")
             if options.subprocess:
-                result = run_in_subprocess("finney", debug)
+                result = run_in_subprocess("finney")
                 try:
                     finney_block = int(result)
                 except ValueError:
@@ -218,10 +213,13 @@ def main(options):
 
         delay_start = time.time()
         for subtensor_name in LOCAL_SUBTENSORS:
-            network = f"ws://subtensor-{subtensor_name}.rizzo.network:9944"
+            network = (
+                subtensor_name if ":" in subtensor_name
+                else f"ws://subtensor-{subtensor_name}.rizzo.network:9944"
+            )
             print(f"Getting block for {network}")
             if options.subprocess:
-                result = run_in_subprocess(network, debug)
+                result = run_in_subprocess(network)
                 try:
                     block = int(result)
                 except ValueError:
@@ -246,7 +244,7 @@ def main(options):
 
             subtensor_data.append(
                 SubtensorData(
-                    name=subtensor_name,
+                    name=network,
                     block_diff=block_diff,
                     error=error,
                 )
