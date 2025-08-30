@@ -8,6 +8,15 @@ import subprocess
 import time
 
 
+LOCAL_SUBTENSORS = [
+    "cali",
+    "candyland",
+    "datacenter01",
+    "la",
+    "moonbase",
+    "titan",
+]
+
 DRYRUN = False
 
 
@@ -17,20 +26,44 @@ def _parse_args():
     parser.add_argument(
         "-j", "--json-folder",
         required=True,
-        help="The json folder in which to write the json files.")
+        help="The json folder in which to write the json files."
+    )
 
     parser.add_argument(
         "-i", "--interval",
         type=float,
         default=5,
-        help="The number of minutes between data gathering.")
+        help="The number of minutes between data gathering."
+    )
 
     parser.add_argument(
         "-l", "--local-subtensor",
-        help="When specified, use a local running subtensor. When not "
-             "specified, use the 'finney' network subtensor.")
+        nargs="?",
+        default=False,
+        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
+             "List the flag without a value to rotate between all local "
+             "subtensors. When not specified, use the 'finney' network subtensor."
+    )
+
+    parser.add_argument(
+        "-p", "--subprocess",
+        action="store_true",
+        help="When specified, run everything in a subprocess."
+    )
+
+    parser.add_argument(
+        "--skip-discord-notify",
+        action="store_false",
+        dest="discord_notify",
+        help="When specified, this will skip sending the notification to the "
+             "discord monitor channel."
+    )
 
     return parser.parse_args()
+
+
+class SubtensorConnectionError(Exception):
+    pass
 
 
 class SubnetsChecker:
@@ -42,11 +75,13 @@ class SubnetsChecker:
         "yJg07DYWLJyiFZgZPaLGTmFEwiAu2JWW5osyjFVoqlMWT66JBbV9_FOcslvDdtibtcR0"
     )
 
-    def __init__(self, network, json_folder):
-        self._network = network
-        self._json_file = os.path.join(json_folder, self._json_file_name)
+    def __init__(self, options):
+        self._json_file = os.path.join(options.json_folder, self._json_file_name)
+        self._network = options.network
+        self._discord_notify = options.discord_notify
+        self._check_subnets()
 
-    def check_subnets(self):
+    def _check_subnets(self):
         print("\nChecking subnets")
         new_registered_subnet_list = self._get_registered_subnets()
         current_registered_subnet_list = self._read_subnets_json_file()
@@ -59,11 +94,22 @@ class SubnetsChecker:
     def _get_registered_subnets(self):
         t1 = time.time()
         registered_subnet_list = []
-        subtensor = bittensor.subtensor(network=self._network)
-        for subnet in subtensor.get_subnets()[1:]:
-            metagraph = subtensor.metagraph(netuid=subnet)
-            if metagraph.hparams.registration_allowed:
-                registered_subnet_list.append(str(subnet))
+
+        print(f"Connecting to subtensor: {self._network}")
+        try:
+            with bittensor.subtensor(network=self._network) as subtensor:
+                for subnet in subtensor.get_subnets()[1:]:
+                    print(f"Checking subnet {subnet}")
+                    metagraph = subtensor.metagraph(netuid=subnet)
+                    if metagraph.hparams.registration_allowed:
+                        registered_subnet_list.append(str(subnet))
+        except Exception as err:
+            print("")
+            print(f"ERROR: Subtensor connection failed on '{self._network}'")
+            print(f"{type(err).__name__}: {err}")
+            print("")
+            raise SubtensorConnectionError
+
         t2 = time.time() - t1
         print(f"Gathered subnet data in {t2:.3} seconds")
         return registered_subnet_list
@@ -80,14 +126,16 @@ class SubnetsChecker:
                 new_registered_subnet_list
             ).difference(
                 set(current_registered_subnet_list)
-            )
+            ),
+            key=int
         )
         removed_subnets = sorted(
             set(
                 current_registered_subnet_list
             ).difference(
                 set(new_registered_subnet_list)
-            )
+            ),
+            key=int
         )
         print(f"Current registered subnets: {current_registered_subnet_list}")
         print(f"New registered subnets:     {new_registered_subnet_list}")
@@ -138,6 +186,10 @@ class SubnetsChecker:
             return json.dump(registered_subnet_list, fd)
 
     def _notify(self, message):
+        if not self._discord_notify:
+            print("Not sending discord monitor notification.")
+            return
+
         payload = json.dumps({"content": message})
         for url in self._discord_monitor_urls:
             monitor_cmd = [
@@ -172,18 +224,45 @@ def format_time(total_time):
     return runtime_text
 
 
+def get_subtensor_network(local_subtensor, local_subtensor_index):
+    if local_subtensor is False:
+        return "finney"
+
+    network_name = (
+        local_subtensor or LOCAL_SUBTENSORS[local_subtensor_index]
+    )
+    return f"ws://subtensor-{network_name}.rizzo.network:9944"
+
+
+# def check_subnets(options):
+#     SubnetsChecker(options)
+
+
 def main(options):
     interval_seconds = round(options.interval * 60)
-    network = (
-        f"ws://subtensor-{options.local_subtensor}.rizzo.network:9944"
-        if options.local_subtensor
-        else "finney"
-    )
+    local_subtensor_index = -1
 
-    subnets_checker = SubnetsChecker(network, options.json_folder)
     while True:
         start_time = time.time()
-        subnets_checker.check_subnets()
+        local_subtensor_index = \
+            (local_subtensor_index + 1) % len(LOCAL_SUBTENSORS)
+        options.network = get_subtensor_network(
+            options.local_subtensor, local_subtensor_index
+        )
+
+        try:
+            if options.subprocess:
+                args = [options]
+                with multiprocessing.Pool(processes=1) as pool:
+                    pool.apply(SubnetsChecker, args)
+            else:
+                SubnetsChecker(options)
+        except SubtensorConnectionError:
+            if options.local_subtensor is None:
+                print("Rotating subtensors and trying again.")
+                time.sleep(1)
+                continue
+
         total_seconds = round(time.time() - start_time)
 
         wait_seconds = interval_seconds - total_seconds
@@ -202,5 +281,8 @@ if __name__ == "__main__":
 
     # Importing bittensor here suppresses the --help info
     import bittensor
+
+    if options.subprocess:
+        import multiprocessing
 
     main(options)
