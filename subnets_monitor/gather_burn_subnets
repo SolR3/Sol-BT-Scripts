@@ -10,6 +10,11 @@ import sys
 import time
 
 
+LOCAL_TIMEZONE = "MST7MDT"
+JSON_FILE_NAME = "burn_subnets_data.json"
+TIMESTAMP_FILE_NAME = "timestamp.json"
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
@@ -45,6 +50,38 @@ def format_time(total_time):
     runtime_text = ", ".join(runtime_text)
 
     return runtime_text
+
+
+def write_json_file(json_folder, data):
+    os.makedirs(json_folder, exist_ok=True)
+
+    json_file = os.path.join(json_folder, JSON_FILE_NAME)
+    print(f"\nWriting data to file: {json_file}")
+    with open(json_file, "w") as fd:
+        json.dump(data, fd, indent=4)
+
+
+def write_timestamp(json_folder):
+    os.environ["TZ"] = LOCAL_TIMEZONE
+    time.tzset()
+
+    max_file_time = 0
+    json_base, json_ext = os.path.splitext(JSON_FILE_NAME)
+    for _file in os.listdir(json_folder):
+        file_base, file_ext = os.path.splitext(_file)
+        if not file_base.startswith(json_base) or file_ext != json_ext:
+            continue
+
+        json_file = os.path.join(json_folder, _file)
+        file_time = os.path.getmtime(json_file)
+        if file_time > max_file_time:
+            max_file_time = file_time
+
+    timestamp = time.ctime(max_file_time)
+    timestamp_file = os.path.join(json_folder, TIMESTAMP_FILE_NAME)
+    print(f"\nWriting timestamp file: {timestamp_file}")
+    with open(timestamp_file, "w") as fd:
+            json.dump(timestamp, fd)
 
 
 def run(options):
@@ -87,14 +124,17 @@ def run(options):
                 break
 
     burn_subnets = sorted(burn_subnets)
+
     print("Burn Subnets:")
     print(burn_subnets)
+
+    if options.json_folder:
+        write_json_file(options.json_folder, burn_subnets)
+        write_timestamp(options.json_folder)
 
 
 def main(options):
     interval_seconds = round(options.interval * 60)
-    if options.json_folder:
-        os.makedirs(options.json_folder, exist_ok=True)
 
     while True:
         start_time = time.time()
