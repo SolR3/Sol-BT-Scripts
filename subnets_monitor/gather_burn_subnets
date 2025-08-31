@@ -21,6 +21,7 @@ def parse_args():
     parser.add_argument(
         "-i", "--interval",
         type=float,
+        default=0,
         help="The number of minutes between data gathering."
     )
 
