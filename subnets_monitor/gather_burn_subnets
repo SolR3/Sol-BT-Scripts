@@ -47,7 +47,7 @@ def format_time(total_time):
     return runtime_text
 
 
-def run():
+def run(options):
     print("Gathering Burn Subnets")
 
     burn_subnets = set()
