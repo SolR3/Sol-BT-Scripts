@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 
 def parse_args():
@@ -14,7 +15,6 @@ def parse_args():
 
     parser.add_argument(
         "-j", "--json-folder",
-        required=True,
         help="The json folder in which to write the json files."
     )
 
@@ -25,10 +25,31 @@ def parse_args():
         help="The number of minutes between data gathering."
     )
 
+    parser.add_argument(
+        "-p", "--subprocess",
+        action="store_true",
+        help="When specified, run everything in a subprocess."
+    )
+
     return parser.parse_args()
 
 
-def main(options):
+def format_time(total_time):
+    m = total_time/60
+    minutes = int(m)
+    seconds = round((m - minutes)*60)
+
+    runtime_text = [f"{minutes} minutes"] if minutes else []
+    if seconds:
+        runtime_text += [f"{seconds} seconds"]
+    runtime_text = ", ".join(runtime_text)
+
+    return runtime_text
+
+
+def run():
+    print("Gathering Burn Subnets")
+
     burn_subnets = set()
     process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
     pm2_output = json.loads(process.stdout)
@@ -61,6 +82,44 @@ def main(options):
     print(burn_subnets)
 
 
+def main(options):
+    interval_seconds = round(options.interval * 60)
+    if options.json_folder:
+        os.makedirs(options.json_folder, exist_ok=True)
+
+    while True:
+        start_time = time.time()
+
+        # Run the subnet data gathering.
+        if options.subprocess:
+            args = [options]
+            with multiprocessing.Pool(processes=1) as pool:
+                pool.apply(run, args)
+        else:
+            run(options)
+
+        # Only gather the data once.
+        if not interval_seconds:
+            break
+
+        total_seconds = round(time.time() - start_time)
+        wait_seconds = interval_seconds - total_seconds
+        if wait_seconds > 0:
+            wait_time_formatted = format_time(wait_seconds)
+            print(f"Waiting {wait_time_formatted}.")
+            time.sleep(wait_seconds)
+        else:
+            print(
+                f"Processing took {total_seconds} seconds which is longer "
+                f"than {interval_seconds} seconds. Not waiting."
+            )
+    
+
+
 if __name__ == "__main__":
     options = parse_args()
+
+    if options.subprocess:
+        import multiprocessing
+
     main(options)
