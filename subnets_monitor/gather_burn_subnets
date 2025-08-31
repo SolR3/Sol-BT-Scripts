@@ -113,14 +113,18 @@ def run(options):
         # This is how we know the process is a burn code process
         for netuid_attr in ["MAINNET_NETUID", "DEFAULT_NETUID"]:
             if hasattr(script_module, netuid_attr):
-                netuid = int(getattr(script_module, netuid_attr))
+                try:
+                    netuid = int(getattr(script_module, netuid_attr))
+                except TypeError:
+                    netuid = None
                 if "args" in pm2_env:
                     script_args = pm2_env["args"]
                     if "--netuid" in script_args:
                         netuid_index = script_args.index("--netuid") + 1
                         netuid = int(script_args[netuid_index])
 
-                burn_subnets.add(netuid)
+                if netuid is not None:
+                    burn_subnets.add(netuid)
                 break
 
     burn_subnets = sorted(burn_subnets)
