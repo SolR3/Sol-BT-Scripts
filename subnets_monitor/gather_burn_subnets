@@ -85,7 +85,6 @@ def run(options):
                 netuid = int(script_args[netuid_index])
 
         burn_subnets.add(netuid)
-        
 
     burn_subnets = sorted(burn_subnets)
     print("Burn Subnets:")
@@ -123,7 +122,7 @@ def main(options):
                 f"Processing took {total_seconds} seconds which is longer "
                 f"than {interval_seconds} seconds. Not waiting."
             )
-    
+
 
 
 if __name__ == "__main__":
