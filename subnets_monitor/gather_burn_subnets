@@ -45,6 +45,7 @@ def main(options):
         if script_dir not in sys.path:
             sys.path = [script_dir] + sys.path
 
+        print(f"Checking {script_module_name}")
         try:
             script_module = importlib.import_module(script_module_name)
         except ModuleNotFoundError:
