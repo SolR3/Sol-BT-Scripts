@@ -58,7 +58,7 @@ def main(options):
 
     burn_subnets = sorted(burn_subnets)
     print("Burn Subnets:")
-    print("\n".join(burn_subnets))
+    print(burn_subnets)
 
 
 if __name__ == "__main__":
