@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+
+# standard imports
+import argparse
+import importlib
+import json
+import os
+import subprocess
+import sys
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-j", "--json-folder",
+        required=True,
+        help="The json folder in which to write the json files."
+    )
+
+    parser.add_argument(
+        "-i", "--interval",
+        type=float,
+        default=5,
+        help="The number of minutes between data gathering."
+    )
+
+    return parser.parse_args()
+
+
+def main(options):
+    burn_subnets = set()
+    process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
+    pm2_output = json.loads(process.stdout)
+    for pm2_process in pm2_output:
+        if pm2_process["pm2_env"]["status"] != "online":
+            continue
+
+        script_path = pm2_process["pm2_env"]["pm_exec_path"]
+        script_dir, script_name = os.path.split(script_path)
+        script_module_name, script_ext = os.path.splitext(script_name)
+        if script_ext != ".py":
+            continue
+
+        if script_dir not in sys.path:
+            sys.path = [script_dir] + sys.path
+
+        try:
+            script_module = importlib.import_module(script_module_name)
+        except ModuleNotFoundError:
+            continue
+
+        try:
+            burn_subnets.add(script_module.MAINNET_NETUID)
+        except AttributeError:
+            continue
+
+    burn_subnets = sorted(burn_subnets)
+    print("Burn Subnets:")
+    print("\n".join(burn_subnets))
+
+
+if __name__ == "__main__":
+    options = parse_args()
+    main(options)
