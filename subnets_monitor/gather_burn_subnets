@@ -54,10 +54,11 @@ def run(options):
     process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
     pm2_output = json.loads(process.stdout)
     for pm2_process in pm2_output:
-        if pm2_process["pm2_env"]["status"] != "online":
+        pm2_env = pm2_process["pm2_env"]
+        if pm2_env["status"] != "online":
             continue
 
-        script_path = pm2_process["pm2_env"]["pm_exec_path"]
+        script_path = pm2_env["pm_exec_path"]
         script_dir, script_name = os.path.split(script_path)
         script_module_name, script_ext = os.path.splitext(script_name)
         if script_ext != ".py":
@@ -72,10 +73,19 @@ def run(options):
         except ModuleNotFoundError:
             continue
 
-        try:
-            burn_subnets.add(script_module.MAINNET_NETUID)
-        except AttributeError:
+        # This is how we know the process is a burn code process
+        if not hasattr(script_module, "MAINNET_NETUID"):
             continue
+
+        netuid = int(script_module.MAINNET_NETUID)
+        if "args" in pm2_env:
+            script_args = pm2_env["args"]
+            if "--netuid" in script_args:
+                netuid_index = script_args.index("--netuid") + 1
+                netuid = int(script_args[netuid_index])
+
+        burn_subnets.add(netuid)
+        
 
     burn_subnets = sorted(burn_subnets)
     print("Burn Subnets:")
