@@ -1,6 +1,7 @@
-import time
 import argparse
+import random
 import sys
+import time
 
 import bittensor as bt
 from bittensor_wallet import Wallet
@@ -55,7 +56,9 @@ class TempValidator:
         self.wallet = Wallet(config=self.config)
         print(f"Wallet: {self.wallet}")
 
-        self.local_subtensor_index = -1
+        # Randomize local subtensor
+        random.seed()
+        self.local_subtensor_index = random.randint(0, len(LOCAL_SUBTENSORS) - 1)
 
     def _apply_top_defaults(self, config):
         """
