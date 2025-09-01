@@ -27,6 +27,7 @@ def _parse_args():
 
 def main(options):
     pm2_name = f"burn_sn{options.netuid}"
+    homedir = os.path.expanduser("~")
     burn_script = os.path.expanduser("~/burn_subnet.py")
     venv_path = os.path.expanduser("~/venv-burn/bin/activate")
     pm2_stop_cmd = ["pm2", "delete", pm2_name]
@@ -47,6 +48,7 @@ def main(options):
         fp.write(
             "#!/bin/bash\n"
             "\n"
+            f"cd {homedir}\n"
             "deactivate\n"
             f"source {venv_path}\n"
             f"{pm2_stop_cmd}\n"
