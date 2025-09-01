@@ -78,9 +78,9 @@ class TempValidator:
 
         # Wallet defaults
         if hasattr(config, "wallet"):
-            if (getattr(config.wallet, "name", None) in (None, "")) and (DEFAULT_WALLET_NAME is not None):
+            if (getattr(config.wallet, "name", None) in (None, "", "default")) and (DEFAULT_WALLET_NAME is not None):
                 config.wallet.name = DEFAULT_WALLET_NAME
-            if (getattr(config.wallet, "hotkey", None) in (None, "")):
+            if (getattr(config.wallet, "hotkey", None) in (None, "", "default")):
                 if (DEFAULT_WALLET_HOTKEY is not None):
                     config.wallet.hotkey = DEFAULT_WALLET_HOTKEY
                 else:
@@ -173,7 +173,7 @@ class TempValidator:
         network_name = (
             self.config.local_subtensor or LOCAL_SUBTENSORS[self.local_subtensor_index]
         )
-        self.config.subtensor.chain_endpoint = \
+        self.config.subtensor.network = \
             f"ws://subtensor-{network_name}.rizzo.network:9944"
 
     def get_burn_uid(self, subtensor):
