@@ -27,7 +27,7 @@ def main(options):
     print(f"Running command:\n{pm2_stop_cmd_str}")
     print("")
     try:
-        subprocess.run([pm2_stop_cmd], check=True)
+        subprocess.run(pm2_stop_cmd, check=True)
     except subprocess.CalledProcessError as exc:
         print(f"\nERROR: Command failed with error: {exc}")
 
