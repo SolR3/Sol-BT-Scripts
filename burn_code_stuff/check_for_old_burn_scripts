@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+
+# standard imports
+import json
+import os
+import subprocess
+
+
+old_processes = []
+process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
+pm2_output = json.loads(process.stdout)
+for pm2_process in pm2_output:
+    if not pm2_process["name"].startswith("burn_sn"):
+        continue
+    if os.path.basename(pm2_process["pm2_env"]["pm_exec_path"]) != "burn_subnet.py":
+        old_processes.append(pm2_process["name"])
+
+for old_process in sorted(old_processes, key=lambda p: int(p[7:])):
+    print(old_process)
