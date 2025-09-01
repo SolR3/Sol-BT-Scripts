@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+
+# standard imports
+import argparse
+import shlex
+import subprocess
+
+ 
+def _parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "netuid",
+        type=int,
+        help="The uid of the subnet."
+    )
+
+    return parser.parse_args()
+
+
+def main(options):
+    pm2_name = f"burn_sn{options.netuid}"
+    pm2_stop_cmd = ["pm2", "delete", pm2_name]
+    pm2_stop_cmd_str = shlex.join(pm2_stop_cmd)
+
+    print("")
+    print(f"Running command:\n{pm2_stop_cmd_str}")
+    print("")
+    try:
+        subprocess.run([pm2_stop_cmd], check=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"\nERROR: Command failed with error: {exc}")
+
+
+if __name__ == "__main__":
+    options = _parse_args()
+    main(options)

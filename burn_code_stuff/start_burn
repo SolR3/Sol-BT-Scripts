@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+
+# standard imports
+import argparse
+import os
+import shlex
+import subprocess
+import tempfile
+
+ 
+def _parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "netuid",
+        type=int,
+        help="The uid of the subnet."
+    )
+
+    parser.add_argument(
+        "extra_args",
+        nargs=argparse.REMAINDER
+    )
+
+    return parser.parse_args()
+
+
+def main(options):
+    pm2_name = f"burn_sn{options.netuid}"
+    burn_script = os.path.expanduser("~/burn_subnet.py")
+    venv_path = os.path.expanduser("~/venv-burn/bin/activate")
+    pm2_stop_cmd = ["pm2", "delete", pm2_name]
+    pm2_start_cmd = [
+        "pm2", "start", "--interpreter", "python3", "--name", pm2_name,
+        burn_script, "--", "run", "--netuid", str(options.netuid), "--local-subtensor"
+    ] + options.extra_args
+    pm2_stop_cmd = shlex.join(pm2_stop_cmd)
+    pm2_start_cmd = shlex.join(pm2_start_cmd)
+    
+    fp, start_script = tempfile.mkstemp(
+        prefix=f"start_burn_{options.netuid}_", suffix=".sh"
+    )
+    os.close(fp)
+    os.chmod(start_script, 0o700)
+
+    with open(start_script, "w") as fp:
+        fp.write(
+            "#!/bin/bash\n"
+            "\n"
+            "deactivate\n"
+            f"source {venv_path}\n"
+            f"{pm2_stop_cmd}\n"
+            f"{pm2_start_cmd}\n"
+        )
+
+    print("")
+    print(f"Running command:\n{pm2_start_cmd}")
+    print(f"Shell script: {start_script}")
+    print("")
+    try:
+        subprocess.run([start_script], check=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"\nERROR: Command failed with error: {exc}")
+
+    os.unlink(start_script)
+
+
+if __name__ == "__main__":
+    options = _parse_args()
+    main(options)
