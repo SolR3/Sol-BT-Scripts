@@ -253,7 +253,7 @@ class ValidatorCheckerUpdated(ValidatorChecker):
 
         # Randomize local subtensor
         random.seed()
-        self._local_subtensor_index = random.randint(0, len(self._local_subtensors) -1)
+        self._local_subtensor_index = random.randint(0, len(self._local_subtensors) - 1)
 
     def _run(self):
         self._log_info("")
