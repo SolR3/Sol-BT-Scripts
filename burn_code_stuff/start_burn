@@ -7,7 +7,7 @@ import shlex
 import subprocess
 import tempfile
 
- 
+
 def _parse_args():
     parser = argparse.ArgumentParser()
 
@@ -37,7 +37,7 @@ def main(options):
     ] + options.extra_args
     pm2_stop_cmd = shlex.join(pm2_stop_cmd)
     pm2_start_cmd = shlex.join(pm2_start_cmd)
-    
+
     fp, start_script = tempfile.mkstemp(
         prefix=f"start_burn_{options.netuid}_", suffix=".sh"
     )

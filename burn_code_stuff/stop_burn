@@ -5,7 +5,7 @@ import argparse
 import shlex
 import subprocess
 
- 
+
 def _parse_args():
     parser = argparse.ArgumentParser()
 
