@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+
+# standard imports
+import argparse
+import asyncio
+import json
+import os
+import random
+import subprocess
+import time
+
+
+# Constants
+DEFAULT_TIME_THRESHOLD = 23  # 1 day
+DEFAULT_CHECK_INTERVAL = 1  # 1 hour
+
+# Debugging
+DEBUG = False
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-n", "--netuids",
+        type=int,
+        nargs="+",
+        required=True,
+        help="The uids of the subnets to check.")
+
+    parser.add_argument(
+        "--time-threshold",
+        type=float,
+        default=DEFAULT_TIME_THRESHOLD,
+        help="The threshold value in hours above which to manually set weights. "
+             f"Default: {DEFAULT_TIME_THRESHOLD}")
+
+    parser.add_argument(
+        "--check-interval",
+        type=float,
+        default=DEFAULT_CHECK_INTERVAL,
+        help="The interval in hours to check whether weights need to be "
+             f"manually set. Default: {DEFAULT_CHECK_INTERVAL}")
+
+    parser.add_argument(
+        "--skip-discord-notify",
+        action="store_false",
+        dest="discord_notify",
+        help="When specified, this will skip sending the notification to the "
+             "discord monitor channel.")
+
+    return parser.parse_args()
+
+
+class SubnetWeightsChecker:
+    _rizzo_coldkey = "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo"
+
+    # This is a fix to handle the subnets on which we're registered on
+    # multiple uids.
+    _multi_uid_hotkeys = {
+        20: "5ExaAP3ENz3bCJufTzWzs6J6dCWuhjjURT8AdZkQ5qA4As2o",
+        86: "5F9FAMhhzZJBraryVEp1PTeaL5bgjRKcw1FSyuvRLmXBds86",
+        123: "5GzaskJbqJvGGXtu2124i9YLgHfMDDr7Pduq6xfYYgkJs123",
+        124: "5FKk6ucEKuKzLspVYSv9fVHonumxMJ33MdHqbVjZi2NUs124",
+    }
+
+    _local_subtensors = [
+        "cali",
+        "candyland",
+        "datacenter01",
+        "la",
+        "moonbase",
+        "titan",
+    ]
+
+    _discord_monitor_url = (
+        "https://discord.com/api/webhooks/1328849265765777468/"
+        "yJg07DYWLJyiFZgZPaLGTmFEwiAu2JWW5osyjFVoqlMWT66JBbV9_FOcslvDdtibtcR0"
+    )
+
+    def __init__(self, options):
+        self._netuids = options.netuids
+        self._time_threshold = options.time_threshold * 300  # blocks
+        self._check_interval = options.check_interval * 3600  # seconds
+
+        random.seed()
+        self._local_subtensor_index = random.randint(0, len(self._local_subtensors) - 1)
+
+        self._run()
+
+    def _log_info(self, message):
+        bittensor.logging.info(message)
+
+    def _log_error(self, message):
+        bittensor.logging.error(message)
+
+    def _log_warning(self, message):
+        bittensor.logging.warning(message)
+
+    def _log_debug(self, message):
+        bittensor.logging.debug(message)
+
+    def _run(self):
+        while True:
+            start_time = int(time.time())
+            asyncio.run(self._async_run())
+
+            elapsed_time = int(time.time()) - start_time
+            sleep_interval = self._check_interval - elapsed_time
+            if sleep_interval > 0:
+                self._log_info("")
+                self._log_info(f"Sleeping for {sleep_interval} seconds.")
+                time.sleep(sleep_interval)
+            else:
+                # Shouldn't ever get here
+                self._log_warning(
+                    f"Elapsed time ({elapsed_time} seconds) is greater than "
+                    f"check interval ({self._check_interval} seconds)."
+                )
+
+    async def _async_run(self):
+        self._log_info("")
+        self._log_info(
+            "Checking updated values and determining whether to "
+            "manually set weights."
+        )
+        metagraphs = await self._get_subtensor_metagraphs()
+        for i, netuid in enumerate(self._netuids):
+            self._log_info("")
+            self._log_info(f"Checking subnet {netuid}")
+
+            metagraph = metagraphs[i]
+            rizzo_uid = self._get_rizzo_uid(metagraph)
+            if rizzo_uid is None:
+                self._log_warning(
+                    f"Rizzo validator is not running on subnet {netuid}."
+                )
+                continue
+
+            rizzo_updated = int(
+                metagraph.block - metagraph.last_update[rizzo_uid]
+            )
+            self._log_info(f"Rizzo Updated is {rizzo_updated} blocks.")
+
+            # If the rizzo updated value is greater than the weights threshold
+            # then manually set weights.
+            if rizzo_updated >= self._time_threshold:
+                self._log_info(f"Updated value {rizzo_updated} "
+                                f">= {self._time_threshold}")
+                self._log_info(
+                    f"Manually setting weights on subnet {netuid}."
+                )
+                self._set_weights(netuid, rizzo_updated)
+            else:
+                self._log_info(f"Updated value {rizzo_updated} "
+                                f"< {self._time_threshold}")
+                self._log_info(f"Not setting weights on subnet {netuid}.")
+
+    async def _get_subtensor_metagraphs(self):
+        # Loop until we get a subtensor connection
+        while True:
+            self._local_subtensor_index = \
+                (self._local_subtensor_index + 1) % len(self._local_subtensors)
+            network_name = self._local_subtensors[self._local_subtensor_index]
+            network = f"ws://subtensor-{network_name}.rizzo.network:9944"
+
+            self._log_info(f"Connecting to subtensor network: {network}")
+            try:
+                async with AsyncSubtensor(network=network) as subtensor:
+                    # Get the block to pass to async calls so everything is in sync
+                    block = await subtensor.block
+
+                    # Get the metagraph for each netuid
+                    return await asyncio.gather(
+                        *[
+                            subtensor.metagraph(netuid=netuid, block=block)
+                            for netuid in self._netuids
+                        ]
+                    )
+            except Exception as err:
+                self._log_error("")
+                self._log_error(f"Subtensor connection failed on '{network}'")
+                self._log_error(f"{type(err).__name__}: {err}")
+                self._log_error("")
+                self._log_error("Rotating subtensors and trying again.")
+                time.sleep(1)
+
+    def _get_rizzo_uid(self, metagraph):
+        if metagraph.netuid in self._multi_uid_hotkeys:
+            try:
+                return metagraph.hotkeys.index(
+                    self._multi_uid_hotkeys[metagraph.netuid]
+                )
+            except ValueError:
+                return None
+
+        try:
+            return metagraph.coldkeys.index(self._rizzo_coldkey)
+        except ValueError:
+            return None
+
+    def _set_weights(self, netuid, rizzo_updated):
+        print("\nSETTING WEIGHTS\n")
+
+    def _send_monitor_notification(self, message):
+        if not self._discord_notify:
+            self._log_info("Not sending discord monitor notification.")
+            return
+
+        payload = json.dumps({"content": message})
+        monitor_cmd = [
+            "curl", "-H", "Content-Type: application/json",
+            "-d", payload, self._discord_monitor_url
+        ]
+        monitor_cmd_str = " ".join(monitor_cmd)
+        self._log_info(f"Running command: '{monitor_cmd_str}'")
+        try:
+            subprocess.run(monitor_cmd, check=True)
+        except subprocess.CalledProcessError as exc:
+            self._log_error("Failed to send discord monitor notification.")
+            self._log_error(
+                f"'{monitor_cmd_str}' command failed with error {exc}")
+        else:
+            self._log_info("Discord monitor notification successfully sent.")
+
+
+def main(options):
+    if DEBUG:
+        bittensor.logging.enable_debug()
+    else:
+        bittensor.logging.enable_info()
+
+    script_name =  os.path.basename(__file__)
+    bittensor.logging.info("")
+    bittensor.logging.info(f"Starting {script_name}")
+    bittensor.logging.info("")
+
+    SubnetWeightsChecker(options)
+
+
+if __name__ == "__main__":
+    options = parse_args()
+
+    # Importing bittensor here suppresses the --help info
+    import bittensor
+    from bittensor.core.async_subtensor import AsyncSubtensor
+
+    main(options)
