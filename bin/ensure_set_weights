@@ -145,8 +145,39 @@ class SubnetWeightsChecker:
 
         if not netuids:
             return
+        
+        # Loop until we get a subtensor connection
+        while True:
+            self._local_subtensor_index = \
+                (self._local_subtensor_index + 1) % len(self._local_subtensors)
+            network_name = self._local_subtensors[self._local_subtensor_index]
+            network = f"ws://subtensor-{network_name}.rizzo.network:9944"
 
-        metagraphs = await self._get_subtensor_metagraphs(netuids)
+            self._log_info("")
+            self._log_info(f"Connecting to subtensor network: {network}")
+            try:
+                async with AsyncSubtensor(network=network) as subtensor:
+                    await self._check_and_set_weights(netuids, subtensor)
+                    break
+            except Exception as err:
+                self._log_error("")
+                self._log_error(f"Subtensor connection failed on '{network}'")
+                self._log_error(f"{type(err).__name__}: {err}")
+                self._log_error("")
+                self._log_error("Rotating subtensors and trying again.")
+                time.sleep(1)
+
+    async def _check_and_set_weights(self, netuids, subtensor):
+        # Get the block to pass to async calls so everything is in sync
+        # and get the metagraph for each netuid.
+        block = await subtensor.block
+        metagraphs = await asyncio.gather(
+            *[
+                subtensor.metagraph(netuid=netuid, block=block)
+                for netuid in netuids
+            ]
+        )
+
         for i, netuid in enumerate(netuids):
             self._log_info("")
             self._log_info(f"Checking subnet {netuid}")
@@ -179,36 +210,6 @@ class SubnetWeightsChecker:
                 self._log_info(f"Updated value {rizzo_updated} "
                                 f"< {self._updated_threshold}")
                 self._log_info(f"Not setting weights on subnet {netuid}.")
-
-    async def _get_subtensor_metagraphs(self, netuids):
-        # Loop until we get a subtensor connection
-        while True:
-            self._local_subtensor_index = \
-                (self._local_subtensor_index + 1) % len(self._local_subtensors)
-            network_name = self._local_subtensors[self._local_subtensor_index]
-            network = f"ws://subtensor-{network_name}.rizzo.network:9944"
-
-            self._log_info("")
-            self._log_info(f"Connecting to subtensor network: {network}")
-            try:
-                async with AsyncSubtensor(network=network) as subtensor:
-                    # Get the block to pass to async calls so everything is in sync
-                    block = await subtensor.block
-
-                    # Get the metagraph for each netuid
-                    return await asyncio.gather(
-                        *[
-                            subtensor.metagraph(netuid=netuid, block=block)
-                            for netuid in netuids
-                        ]
-                    )
-            except Exception as err:
-                self._log_error("")
-                self._log_error(f"Subtensor connection failed on '{network}'")
-                self._log_error(f"{type(err).__name__}: {err}")
-                self._log_error("")
-                self._log_error("Rotating subtensors and trying again.")
-                time.sleep(1)
 
     def _get_rizzo_uid(self, metagraph):
         if metagraph.netuid in self._multi_uid_hotkeys:
