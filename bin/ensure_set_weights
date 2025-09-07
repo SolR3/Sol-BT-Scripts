@@ -80,11 +80,17 @@ class SubnetWeightsChecker:
 
     def __init__(self, options):
         self._netuids = options.netuids
-        self._time_threshold = options.time_threshold * 300  # blocks
-        self._check_interval = options.check_interval * 3600  # seconds
+        self._updated_threshold = round(options.time_threshold * 300)  # blocks
+        self._check_interval = round(options.check_interval * 3600)  # seconds
+        self._interval_blocks = round(self._check_interval / 12) # blocks
 
         random.seed()
-        self._local_subtensor_index = random.randint(0, len(self._local_subtensors) - 1)
+        self._local_subtensor_index = random.randint(
+            0, len(self._local_subtensors) - 1
+        )
+        self._expected_updated_values = dict(
+            [(n, self._updated_threshold) for n in self._netuids]
+        )
 
         self._run()
 
@@ -124,8 +130,24 @@ class SubnetWeightsChecker:
             "Checking updated values and determining whether to "
             "manually set weights."
         )
-        metagraphs = await self._get_subtensor_metagraphs()
-        for i, netuid in enumerate(self._netuids):
+        self._log_info("")
+
+        netuids = []
+        for netuid in self._netuids:
+            expected_updated = self._expected_updated_values[netuid]
+            if expected_updated >= self._updated_threshold:
+                netuids.append(netuid)
+            else:
+                self._expected_updated_values[netuid] += self._interval_blocks
+                self._log_info(
+                    f"Not checking subnet {netuid}. Expected updated value "
+                    f"{expected_updated} < {self._updated_threshold}")
+
+        if not netuids:
+            return
+
+        metagraphs = await self._get_subtensor_metagraphs(netuids)
+        for i, netuid in enumerate(netuids):
             self._log_info("")
             self._log_info(f"Checking subnet {netuid}")
 
@@ -144,19 +166,21 @@ class SubnetWeightsChecker:
 
             # If the rizzo updated value is greater than the weights threshold
             # then manually set weights.
-            if rizzo_updated >= self._time_threshold:
+            if rizzo_updated >= self._updated_threshold:
                 self._log_info(f"Updated value {rizzo_updated} "
-                                f">= {self._time_threshold}")
+                                f">= {self._updated_threshold}")
                 self._log_info(
                     f"Manually setting weights on subnet {netuid}."
                 )
                 self._set_weights(netuid, rizzo_updated)
             else:
+                self._expected_updated_values[netuid] = \
+                    rizzo_updated + self._interval_blocks
                 self._log_info(f"Updated value {rizzo_updated} "
-                                f"< {self._time_threshold}")
+                                f"< {self._updated_threshold}")
                 self._log_info(f"Not setting weights on subnet {netuid}.")
 
-    async def _get_subtensor_metagraphs(self):
+    async def _get_subtensor_metagraphs(self, netuids):
         # Loop until we get a subtensor connection
         while True:
             self._local_subtensor_index = \
@@ -164,6 +188,7 @@ class SubnetWeightsChecker:
             network_name = self._local_subtensors[self._local_subtensor_index]
             network = f"ws://subtensor-{network_name}.rizzo.network:9944"
 
+            self._log_info("")
             self._log_info(f"Connecting to subtensor network: {network}")
             try:
                 async with AsyncSubtensor(network=network) as subtensor:
@@ -174,7 +199,7 @@ class SubnetWeightsChecker:
                     return await asyncio.gather(
                         *[
                             subtensor.metagraph(netuid=netuid, block=block)
-                            for netuid in self._netuids
+                            for netuid in netuids
                         ]
                     )
             except Exception as err:
@@ -200,7 +225,7 @@ class SubnetWeightsChecker:
             return None
 
     def _set_weights(self, netuid, rizzo_updated):
-        print("\nSETTING WEIGHTS\n")
+        self._expected_updated_values[netuid] = self._interval_blocks
 
     def _send_monitor_notification(self, message):
         if not self._discord_notify:
