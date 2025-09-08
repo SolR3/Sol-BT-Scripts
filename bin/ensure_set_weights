@@ -17,6 +17,9 @@ DEFAULT_CHECK_INTERVAL = 1  # 1 hour
 # Debugging
 DEBUG = False
 
+# Script name
+SCRIPT_NAME =  os.path.basename(__file__)
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -157,7 +160,7 @@ class SubnetWeightsChecker:
             self._log_info(f"Connecting to subtensor network: {network}")
             try:
                 async with AsyncSubtensor(network=network) as subtensor:
-                    await self._check_and_set_weights(netuids, subtensor)
+                    await self._check_and_set_weights(subtensor, netuids)
                     break
             except Exception as err:
                 self._log_error("")
@@ -167,13 +170,13 @@ class SubnetWeightsChecker:
                 self._log_error("Rotating subtensors and trying again.")
                 time.sleep(1)
 
-    async def _check_and_set_weights(self, netuids, subtensor):
+    async def _check_and_set_weights(self, subtensor, netuids):
         # Get the block to pass to async calls so everything is in sync
         # and get the metagraph for each netuid.
         block = await subtensor.block
         metagraphs = await asyncio.gather(
             *[
-                subtensor.metagraph(netuid=netuid, block=block)
+                subtensor.metagraph(netuid=netuid, lite=False, block=block)
                 for netuid in netuids
             ]
         )
@@ -203,7 +206,9 @@ class SubnetWeightsChecker:
                 self._log_info(
                     f"Manually setting weights on subnet {netuid}."
                 )
-                self._set_weights(netuid, rizzo_updated)
+                await self._set_weights(
+                    subtensor, metagraph, netuid, rizzo_uid, rizzo_updated
+                )
             else:
                 self._expected_updated_values[netuid] = \
                     rizzo_updated + self._interval_blocks
@@ -225,15 +230,80 @@ class SubnetWeightsChecker:
         except ValueError:
             return None
 
-    def _set_weights(self, netuid, rizzo_updated):
+    async def _set_weights(
+        self, subtensor, metagraph, netuid, rizzo_uid, rizzo_updated
+    ):
+        # Get weights.
+        rizzo_weights = metagraph.weights[rizzo_uid]
+        uids = metagraph.uids[rizzo_weights>0.0]
+        weights = rizzo_weights[rizzo_weights>0.0]
+        if uids.size == 0:
+            self._log_info("Previous weights are all 0. Determining burn weights.")
+            uids, weights = await self._get_burn_weights(subtensor, netuid)
+
+        self._log_info("Setting the following weights:")
+        self._log_info(f"    uids = {uids}")
+        self._log_info(f"    weights = {weights}")
+
+        # # Get the weights version key.
+        # version_key = subtensor.query_subtensor(
+        #     "WeightsVersionKey",
+        #     params=[netuid],
+        # ).value
+        # self._log_debug(f"Subnet {netuid} Weights Version Key: {version_key}")
+
+        # Set weights.
+        # success, message = subtensor.set_weights(
+        #     wallet,
+        #     netuid,
+        #     uids,
+        #     weights,
+        #     version_key=version_key,
+        #     wait_for_inclusion=True,
+        #     wait_for_finalization=True,
+        # )
+        # if not success:
+        #     self._log_error(
+        #         f"Error setting weights on subnet {netuid}: {message}"
+        #     )
+        #     self._send_monitor_notification(
+        #         f"Failed to manually set weights on subnet {netuid}"
+        #     )
+        # else:
+        #     print(f"Weights successfully set on subnet {netuid}.")
+        #     self._send_monitor_notification(
+        #         f"Manually set weights on subnet {netuid}"
+        #     )
+
         self._expected_updated_values[netuid] = self._interval_blocks
+
+    async def _get_burn_weights(self, subtensor, netuid):
+        # Get the subtensor owner hotkey
+        owner_hotkey = await subtensor.query_subtensor(
+            "SubnetOwnerHotkey",
+            params=[netuid],
+        )
+        self._log_debug(f"Subnet {netuid} Owner Hotkey: {owner_hotkey}")
+
+        # Get the UID of this hotkey
+        owner_uid = await subtensor.get_uid_for_hotkey_on_subnet(
+            hotkey_ss58=owner_hotkey,
+            netuid=netuid,
+        )
+        self._log_debug(f"Subnet {netuid} Owner UID: {owner_uid}")
+
+        uids = [owner_uid]
+        weights = [1.0]
+
+        return uids, weights
 
     def _send_monitor_notification(self, message):
         if not self._discord_notify:
             self._log_info("Not sending discord monitor notification.")
             return
 
-        payload = json.dumps({"content": message})
+        text = f"{SCRIPT_NAME}: " + message
+        payload = json.dumps({"content": text})
         monitor_cmd = [
             "curl", "-H", "Content-Type: application/json",
             "-d", payload, self._discord_monitor_url
@@ -256,9 +326,8 @@ def main(options):
     else:
         bittensor.logging.enable_info()
 
-    script_name =  os.path.basename(__file__)
     bittensor.logging.info("")
-    bittensor.logging.info(f"Starting {script_name}")
+    bittensor.logging.info(f"Starting {SCRIPT_NAME}")
     bittensor.logging.info("")
 
     SubnetWeightsChecker(options)
