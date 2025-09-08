@@ -86,6 +86,7 @@ class SubnetWeightsChecker:
         self._updated_threshold = round(options.time_threshold * 300)  # blocks
         self._check_interval = round(options.check_interval * 3600)  # seconds
         self._interval_blocks = round(self._check_interval / 12) # blocks
+        self._discord_notify = options.discord_notify
 
         random.seed()
         self._local_subtensor_index = random.randint(
@@ -245,12 +246,13 @@ class SubnetWeightsChecker:
         self._log_info(f"    uids = {uids}")
         self._log_info(f"    weights = {weights}")
 
-        # # Get the weights version key.
-        # version_key = subtensor.query_subtensor(
-        #     "WeightsVersionKey",
-        #     params=[netuid],
-        # ).value
-        # self._log_debug(f"Subnet {netuid} Weights Version Key: {version_key}")
+        # Get the weights version key.
+        version_key_obj = await subtensor.query_subtensor(
+            "WeightsVersionKey",
+            params=[netuid],
+        )
+        version_key = version_key_obj.value
+        self._log_debug(f"Subnet {netuid} Weights Version Key: {version_key}")
 
         # Set weights.
         # success, message = subtensor.set_weights(
@@ -262,18 +264,19 @@ class SubnetWeightsChecker:
         #     wait_for_inclusion=True,
         #     wait_for_finalization=True,
         # )
-        # if not success:
-        #     self._log_error(
-        #         f"Error setting weights on subnet {netuid}: {message}"
-        #     )
-        #     self._send_monitor_notification(
-        #         f"Failed to manually set weights on subnet {netuid}"
-        #     )
-        # else:
-        #     print(f"Weights successfully set on subnet {netuid}.")
-        #     self._send_monitor_notification(
-        #         f"Manually set weights on subnet {netuid}"
-        #     )
+        success, message = (True, "Testing. Please ignore.")
+        if not success:
+            self._log_error(
+                f"Error setting weights on subnet {netuid}: {message}"
+            )
+            self._send_monitor_notification(
+                f"Failed to manually set weights on subnet {netuid}: {message}"
+            )
+        else:
+            self._log_info(f"Weights successfully set on subnet {netuid}.")
+            self._send_monitor_notification(
+                f"Manually set weights on subnet {netuid} - Updated value was {rizzo_updated}"
+            )
 
         self._expected_updated_values[netuid] = self._interval_blocks
 
