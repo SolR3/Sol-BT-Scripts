@@ -52,10 +52,6 @@ class TempValidator:
             print("Error: --netuid is required but not specified (and no DEFAULT_NETUID set at top).")
             sys.exit(1)
 
-        # Initialize wallet.
-        self.wallet = Wallet(config=self.config)
-        print(f"Wallet: {self.wallet}")
-
         # Randomize local subtensor
         random.seed()
         self.local_subtensor_index = random.randint(0, len(LOCAL_SUBTENSORS) - 1)
@@ -197,13 +193,20 @@ class TempValidator:
         return sn_owner_uid
 
     def run_burn_code(self):
+        # Initialize wallet.
+        # Must initialize it here rather than making it an object variable
+        # when running in subprocess mode. Must run in subprocess mode to
+        # reduce memory leaks due to the subtensor connection.
+        wallet = Wallet(config=self.config)
+        print(f"Wallet: {wallet}")
+
         # Initialize subtensor.
         with bt.subtensor(config=self.config) as subtensor:
             print(f"Subtensor: {subtensor}")
 
             # Check if registered.
             registered = subtensor.is_hotkey_registered_on_subnet(
-                hotkey_ss58=self.wallet.hotkey.ss58_address,
+                hotkey_ss58=wallet.hotkey.ss58_address,
                 netuid=self.config.netuid,
             )
             print(f"Registered: {registered}")
@@ -218,7 +221,7 @@ class TempValidator:
                 params=[self.config.netuid],
             ).value
             this_uid = subtensor.get_uid_for_hotkey_on_subnet(
-                hotkey_ss58=self.wallet.hotkey.ss58_address,
+                hotkey_ss58=wallet.hotkey.ss58_address,
                 netuid=self.config.netuid,
             )
             print(f"Validator UID: {this_uid}")
@@ -255,7 +258,7 @@ class TempValidator:
 
             # Set weights.
             success, message = subtensor.set_weights(
-                self.wallet,
+                wallet,
                 self.config.netuid,
                 uids,
                 weights,
