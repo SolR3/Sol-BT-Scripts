@@ -27,11 +27,11 @@ def main():
             )
         else:
             script_lines.extend(
-                [f"Restarting subnet {burn_subnet}", f"{burn_command} {burn_subnet}"]
+                [f"echo Restarting subnet {burn_subnet}", f"{burn_command} {burn_subnet}"]
             )
         if i < num_burn_subnets - 1:
             script_lines.extend(
-                [f"Sleeping {wait_seconds} seconds", f"sleep {wait_seconds}"]
+                [f"echo Sleeping {wait_seconds} seconds", f"sleep {wait_seconds}", ""]
             )
 
     script_text = "\n".join(script_lines) + "\n"
