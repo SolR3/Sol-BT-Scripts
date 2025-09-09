@@ -4,6 +4,7 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import json
+import multiprocessing
 import os
 import pty
 import random
@@ -25,6 +26,9 @@ TOTAL_CHECKS = 6  # TODO: Calculate this instead of hard-coding it.
 # Debugging
 DEBUG = False
 
+# Multiprocessing Queues
+UPDATED_MP_QUEUE = None
+VTRUST_MP_QUEUE = None
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -153,6 +157,24 @@ def parse_args():
 error_logs_wait_timer = None
 
 
+class MetagraphData:
+    def __init__(self, metagraph):
+        self.netuid = metagraph.netuid
+        self.hotkeys = metagraph.hotkeys
+        self.coldkeys = metagraph.coldkeys
+        self.block = metagraph.block
+        self.last_update = metagraph.last_update
+        self.Tv = metagraph.Tv
+
+
+def get_metagraph_data(network, netuid, mp_queue_name):
+    mp_queue = globals()[mp_queue_name]
+    with bittensor.subtensor(network=network) as subtensor:
+        metagraph = subtensor.metagraph(netuid=netuid)
+        metagraph_data = MetagraphData(metagraph)
+        mp_queue.put(metagraph_data)
+
+
 class ValidatorChecker:
     # _rizzo_hotkey = "5FtBncJvGhxjBs4aFn2pid6aur9tBUuo9QR7sHe5DkoRizzo"
     _rizzo_coldkey = "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo"
@@ -183,22 +205,22 @@ class ValidatorChecker:
 
         self._run()
 
-    def _get_rizzo_uid(self, metagraph):
-        if metagraph.netuid in self._multi_uid_hotkeys:
+    def _get_rizzo_uid(self, metagraph_data):
+        if metagraph_data.netuid in self._multi_uid_hotkeys:
             try:
-                return metagraph.hotkeys.index(
-                    self._multi_uid_hotkeys[metagraph.netuid]
+                return metagraph_data.hotkeys.index(
+                    self._multi_uid_hotkeys[metagraph_data.netuid]
                 )
             except ValueError:
                 return None
 
         try:
-            return metagraph.coldkeys.index(self._rizzo_coldkey)
+            return metagraph_data.coldkeys.index(self._rizzo_coldkey)
         except ValueError:
             return None
 
     # Updated and vTrust checkers only
-    def _get_subtensor_metagraph(self):
+    def _get_metagraph_data(self):
         # Loop until we get a subtensor connection
         while True:
             self._local_subtensor_index = \
@@ -208,8 +230,10 @@ class ValidatorChecker:
 
             self._log_info(f"Connecting to subtensor network: {network}")
             try:
-                with bittensor.subtensor(network=network) as subtensor:
-                    return subtensor.metagraph(netuid=self._netuid)
+                args = [network, self._netuid, self._mp_queue_name]
+                with multiprocessing.Pool(processes=1) as pool:
+                    pool.apply(get_metagraph_data, args)
+                break
             except Exception as err:
                 self._log_error("")
                 self._log_error(f"Subtensor connection failed on '{network}'")
@@ -217,6 +241,9 @@ class ValidatorChecker:
                 self._log_error("")
                 self._log_error("Rotating subtensors and trying again.")
                 time.sleep(1)
+
+        mp_queue = globals()[self._mp_queue_name]
+        return mp_queue.get()
 
     @classmethod
     def _log_info(cls, message):
@@ -255,6 +282,12 @@ class ValidatorCheckerUpdated(ValidatorChecker):
         random.seed()
         self._local_subtensor_index = random.randint(0, len(self._local_subtensors) - 1)
 
+        # Create the multiprocessing queue for passing the metagraph data
+        # from the subprocess back to the main process.
+        global UPDATED_MP_QUEUE
+        UPDATED_MP_QUEUE = multiprocessing.Queue()
+        self._mp_queue_name = "UPDATED_MP_QUEUE"
+
     def _run(self):
         self._log_info("")
         self._log_info("Checking for high Updated values.")
@@ -263,8 +296,8 @@ class ValidatorCheckerUpdated(ValidatorChecker):
         default_sleep_time = 4320  # 360 blocks
 
         while True:
-            metagraph = self._get_subtensor_metagraph()
-            rizzo_uid = self._get_rizzo_uid(metagraph)
+            metagraph_data = self._get_metagraph_data()
+            rizzo_uid = self._get_rizzo_uid(metagraph_data)
             if rizzo_uid is None:
                 self._log_warning(
                     f"Rizzo validator not running for subnet {self._netuid}. "
@@ -274,7 +307,7 @@ class ValidatorCheckerUpdated(ValidatorChecker):
                 continue
 
             rizzo_updated = int(
-                metagraph.block - metagraph.last_update[rizzo_uid])
+                metagraph_data.block - metagraph_data.last_update[rizzo_uid])
             self._log_info("")
             self._log_info(f"Rizzo Updated is {rizzo_updated} blocks.")
 
@@ -329,6 +362,12 @@ class ValidatorCheckerVTrust(ValidatorChecker):
         random.seed()
         self._local_subtensor_index = random.randint(0, len(self._local_subtensors) -1)
 
+        # Create the multiprocessing queue for passing the metagraph data
+        # from the subprocess back to the main process.
+        global VTRUST_MP_QUEUE
+        VTRUST_MP_QUEUE = multiprocessing.Queue()
+        self._mp_queue_name = "VTRUST_MP_QUEUE"
+
     def _run(self):
         self._log_info("")
         self._log_info("Checking for low vTrust values.")
@@ -337,8 +376,8 @@ class ValidatorCheckerVTrust(ValidatorChecker):
         sleep_interval = 4320  # 360 blocks
 
         while True:
-            metagraph = self._get_subtensor_metagraph()
-            rizzo_uid = self._get_rizzo_uid(metagraph)
+            metagraph_data = self._get_metagraph_data()
+            rizzo_uid = self._get_rizzo_uid(metagraph_data)
             if rizzo_uid is None:
                 self._log_warning(
                     f"Rizzo validator not running for subnet {self._netuid}. "
@@ -347,7 +386,7 @@ class ValidatorCheckerVTrust(ValidatorChecker):
                 time.sleep(sleep_interval)
                 continue
 
-            rizzo_vtrust = metagraph.Tv[rizzo_uid]
+            rizzo_vtrust = metagraph_data.Tv[rizzo_uid]
             vtrust_str = f"{rizzo_vtrust:.5f}"
 
             self._log_info("")
