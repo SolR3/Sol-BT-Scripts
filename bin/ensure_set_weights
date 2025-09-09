@@ -249,7 +249,7 @@ class SubnetWeightsChecker:
                 f"on subnet {metagraph.netuid}."
             )
             return None
-        
+
         return uid
 
     async def _set_weights(
@@ -276,7 +276,7 @@ class SubnetWeightsChecker:
         self._log_debug(f"Subnet {netuid} Weights Version Key: {version_key}")
 
         # Set weights.
-        success, message = subtensor.set_weights(
+        success, message = await subtensor.set_weights(
             self._wallets[netuid],
             netuid,
             uids,
