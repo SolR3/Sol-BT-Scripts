@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+
+# standard imports
+import os
+import json
+import subprocess
+import tempfile
+
+
+def main():
+    burn_command = os.path.expanduser("~/start_burn")
+    script_lines = ["#!/bin/bash", ""]
+
+    data_file = os.path.expanduser(
+        "~/.bittensor/burn_subnets_data/burn_subnets_data.json"
+    )
+    with open(data_file, "r") as fp:
+        burn_subnets = json.load(fp)
+
+    # even out the restarts across two epochs
+    num_burn_subnets = len(burn_subnets)
+    wait_seconds = int(720 * 12 / num_burn_subnets)
+    for i, burn_subnet in enumerate(burn_subnets):
+        if burn_subnet == 104:
+            script_lines.append(
+                f"{burn_command} {burn_subnet} --target_uid 80 --set_weights_interval 100"
+            )
+        else:
+            script_lines.append(f"{burn_command} {burn_subnet}")
+        if i < num_burn_subnets - 1:
+            script_lines.append(f"sleep {wait_seconds}")
+
+    script_text = "\n".join(script_lines) + "\n"
+
+    fp, restart_script = tempfile.mkstemp(
+        prefix="restart_burn_subnets_", suffix=".sh"
+    )
+    os.close(fp)
+    os.chmod(restart_script, 0o700)
+
+    with open(restart_script, "w") as fp:
+        fp.write(script_text)
+
+    print("")
+    print("Restarting all burn subnets")
+    print(f"Shell script: {restart_script}")
+    print("")
+    try:
+        subprocess.run([restart_script], check=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"\nERROR: Command failed with error: {exc}")
+
+    os.unlink(restart_script)
+
+
+if __name__ == "__main__":
+    main()
