@@ -33,7 +33,8 @@ def main(options):
     pm2_stop_cmd = ["pm2", "delete", pm2_name]
     pm2_start_cmd = [
         "pm2", "start", "--interpreter", "python3", "--name", pm2_name,
-        burn_script, "--", "run", "--netuid", str(options.netuid), "--local-subtensor"
+        burn_script, "--", "run", "--netuid", str(options.netuid),
+        "--local-subtensor", "--subprocess"
     ] + options.extra_args
     pm2_stop_cmd = shlex.join(pm2_stop_cmd)
     pm2_start_cmd = shlex.join(pm2_start_cmd)
