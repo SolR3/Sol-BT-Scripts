@@ -100,7 +100,7 @@ class SubnetWeightsChecker:
 
         self._wallets = {}
         for netuid in self._netuids:
-            self._wallets[netuid] = TestWallet(  # Wallet(
+            self._wallets[netuid] = Wallet(  # TestWallet(
                 name="RizzoNetwork", hotkey=f"rz{netuid:03d}",
             )
 
@@ -276,16 +276,16 @@ class SubnetWeightsChecker:
         self._log_debug(f"Subnet {netuid} Weights Version Key: {version_key}")
 
         # Set weights.
-        # success, message = subtensor.set_weights(
-        #     self._wallets[netuid],
-        #     netuid,
-        #     uids,
-        #     weights,
-        #     version_key=version_key,
-        #     wait_for_inclusion=True,
-        #     wait_for_finalization=True,
-        # )
-        success, message = (True, "Ignore.")
+        success, message = subtensor.set_weights(
+            self._wallets[netuid],
+            netuid,
+            uids,
+            weights,
+            version_key=version_key,
+            wait_for_inclusion=True,
+            wait_for_finalization=True,
+        )
+        # success, message = (True, "Ignore.")
         if not success:
             self._log_error(
                 f"Error setting weights on subnet {netuid}: {message}"
