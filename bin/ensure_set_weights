@@ -178,7 +178,7 @@ class SubnetWeightsChecker:
             try:
                 async with AsyncSubtensor(network=network) as subtensor:
                     await self._check_and_set_weights(subtensor, netuids)
-                    break
+                break
             except Exception as err:
                 self._log_error("")
                 self._log_error(f"Subtensor connection failed on '{network}'")
