@@ -287,6 +287,7 @@ class SubnetWeightsChecker:
         )
         # success, message = (True, "Ignore.")
         if not success:
+            self._expected_updated_values[netuid] += self._interval_blocks
             self._log_error(
                 f"Error setting weights on subnet {netuid}: {message}"
             )
@@ -294,12 +295,11 @@ class SubnetWeightsChecker:
                 f"Failed to manually set weights on subnet {netuid}: {message}"
             )
         else:
+            self._expected_updated_values[netuid] = self._interval_blocks
             self._log_info(f"Weights successfully set on subnet {netuid}.")
             self._send_monitor_notification(
                 f"Manually set weights on subnet {netuid} - Updated value was {rizzo_updated}"
             )
-
-        self._expected_updated_values[netuid] = self._interval_blocks
 
     async def _get_burn_weights(self, subtensor, netuid):
         # Get the subtensor owner hotkey
