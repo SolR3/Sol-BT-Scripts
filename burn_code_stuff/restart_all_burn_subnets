@@ -1,14 +1,39 @@
 #!/usr/bin/env python3
 
 # standard imports
+import argparse
 import os
 import json
 import subprocess
 import tempfile
 
 
-def main():
-    burn_command = "start_burn"  # This is an alias on the VM
+def _parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "burn_exec_dir",
+        help="The folder containing the burn_subnet.py file."
+    )
+
+    parser.add_argument(
+        "burn_venv",
+        help="The path to the venv used for running burn code "
+             "(without the bin/activate part)."
+    )
+
+    return parser.parse_args()
+
+
+def main(options):
+    start_burn_script = os.path.join(
+        os.path.expanduser(options.burn_exec_dir), "start_burn"
+    )
+    burn_script_dir = options.burn_exec_dir
+    venv_path = os.path.join(
+        os.path.expanduser(options.burn_venv), "bin/activate"
+    )
+
     script_lines = ["#!/bin/bash", ""]
 
     data_file = os.path.expanduser(
@@ -22,12 +47,10 @@ def main():
     wait_seconds = int(720 * 12 / num_burn_subnets)
     for i, burn_subnet in enumerate(burn_subnets):
         script_lines.append(f"echo Restarting subnet {burn_subnet}")
+        burn_command = f"{start_burn_script} {burn_script_dir} {venv_path} {burn_subnet}"
         if burn_subnet == 104:
-            script_lines.append(
-                f"{burn_command} {burn_subnet} --target_uid 80 --set_weights_interval 100"
-            )
-        else:
-            script_lines.append(f"{burn_command} {burn_subnet}")
+            burn_command += " --target_uid 29 --set_weights_interval 100"
+        script_lines.append(burn_command)
         if i < num_burn_subnets - 1:
             script_lines.extend(
                 [f"echo Sleeping {wait_seconds} seconds", f"sleep {wait_seconds}", ""]
