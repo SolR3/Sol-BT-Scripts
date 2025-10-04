@@ -12,6 +12,17 @@ def _parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
+        "burn_exec_dir",
+        help="The folder containing the burn_subnet.py file."
+    )
+
+    parser.add_argument(
+        "burn_venv",
+        help="The path to the venv used for running burn code "
+             "(without the bin/activate part)."
+    )
+
+    parser.add_argument(
         "netuid",
         type=int,
         help="The uid of the subnet."
@@ -28,8 +39,13 @@ def _parse_args():
 def main(options):
     pm2_name = f"burn_sn{options.netuid}"
     homedir = os.path.expanduser("~")
-    burn_script = os.path.expanduser("~/burn_subnet.py")
-    venv_path = os.path.expanduser("~/venv-burn/bin/activate")
+    burn_script = os.path.join(
+        os.path.expanduser(options.burn_exec_dir), "burn_subnet.py"
+    )
+    venv_path = os.path.join(
+        os.path.expanduser(options.burn_venv), "bin/activate"
+    )
+
     pm2_stop_cmd = ["pm2", "delete", pm2_name]
     pm2_start_cmd = [
         "pm2", "start", "--interpreter", "python3", "--name", pm2_name,
