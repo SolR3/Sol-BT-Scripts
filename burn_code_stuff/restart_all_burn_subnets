@@ -30,9 +30,7 @@ def main(options):
         os.path.expanduser(options.burn_exec_dir), "start_burn"
     )
     burn_script_dir = options.burn_exec_dir
-    venv_path = os.path.join(
-        os.path.expanduser(options.burn_venv), "bin/activate"
-    )
+    venv_path = options.burn_venv
 
     script_lines = ["#!/bin/bash", ""]
 
