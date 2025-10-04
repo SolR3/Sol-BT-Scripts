@@ -12,11 +12,6 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "burn_exec_dir",
-        help="The folder containing the burn_subnet.py file."
-    )
-
-    parser.add_argument(
         "burn_venv",
         help="The path to the venv used for running burn code "
              "(without the bin/activate part)."
@@ -26,10 +21,10 @@ def parse_args():
 
 
 def main(options):
+    burn_exec_dir = os.path.dirname(__file__)
     start_burn_script = os.path.join(
-        os.path.expanduser(options.burn_exec_dir), "start_burn"
+        os.path.expanduser(burn_exec_dir), "start_burn"
     )
-    burn_script_dir = options.burn_exec_dir
     venv_path = options.burn_venv
 
     script_lines = ["#!/bin/bash", ""]
@@ -45,7 +40,7 @@ def main(options):
     wait_seconds = int(720 * 12 / num_burn_subnets)
     for i, burn_subnet in enumerate(burn_subnets):
         script_lines.append(f"echo Restarting subnet {burn_subnet}")
-        burn_command = f"{start_burn_script} {burn_script_dir} {venv_path} {burn_subnet}"
+        burn_command = f"{start_burn_script} {venv_path} {burn_subnet}"
         if burn_subnet == 104:
             burn_command += " --target_uid 29 --set_weights_interval 100"
         script_lines.append(burn_command)
