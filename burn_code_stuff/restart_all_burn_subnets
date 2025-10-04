@@ -8,7 +8,7 @@ import tempfile
 
 
 def main():
-    burn_command = os.path.expanduser("~/start_burn")
+    burn_command = "start_burn"  # This is an alias on the VM
     script_lines = ["#!/bin/bash", ""]
 
     data_file = os.path.expanduser(
