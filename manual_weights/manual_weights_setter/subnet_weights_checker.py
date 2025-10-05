@@ -1,58 +1,14 @@
-#!/usr/bin/env python3
-
 # standard imports
-import argparse
 import asyncio
 import json
-import os
 import random
 import subprocess
 import time
 
-
-# Constants
-DEFAULT_TIME_THRESHOLD = 23  # 1 day
-DEFAULT_CHECK_INTERVAL = 1  # 1 hour
-
-# Debugging
-DEBUG = False
-
-# Script name
-SCRIPT_NAME =  os.path.basename(__file__)
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "-n", "--netuids",
-        type=int,
-        nargs="+",
-        required=True,
-        help="The uids of the subnets to check.")
-
-    parser.add_argument(
-        "--time-threshold",
-        type=float,
-        default=DEFAULT_TIME_THRESHOLD,
-        help="The threshold value in hours above which to manually set weights. "
-             f"Default: {DEFAULT_TIME_THRESHOLD}")
-
-    parser.add_argument(
-        "--check-interval",
-        type=float,
-        default=DEFAULT_CHECK_INTERVAL,
-        help="The interval in hours to check whether weights need to be "
-             f"manually set. Default: {DEFAULT_CHECK_INTERVAL}")
-
-    parser.add_argument(
-        "--skip-discord-notify",
-        action="store_false",
-        dest="discord_notify",
-        help="When specified, this will skip sending the notification to the "
-             "discord monitor channel.")
-
-    return parser.parse_args()
+# bittensor imports
+import bittensor
+from bittensor.core.async_subtensor import AsyncSubtensor
+from bittensor_wallet import Wallet
 
 
 class TestWallet:
@@ -91,7 +47,8 @@ class SubnetWeightsChecker:
         "yJg07DYWLJyiFZgZPaLGTmFEwiAu2JWW5osyjFVoqlMWT66JBbV9_FOcslvDdtibtcR0"
     )
 
-    def __init__(self, options):
+    def __init__(self, script_name, options):
+        self._script_name = script_name
         self._netuids = options.netuids
         self._updated_threshold = round(options.time_threshold * 300)  # blocks
         self._check_interval = round(options.check_interval * 3600)  # seconds
@@ -326,7 +283,7 @@ class SubnetWeightsChecker:
             self._log_info("Not sending discord monitor notification.")
             return
 
-        text = f"{SCRIPT_NAME}: " + message
+        text = f"{self._script_name}: " + message
         payload = json.dumps({"content": text})
         monitor_cmd = [
             "curl", "-H", "Content-Type: application/json",
@@ -342,27 +299,3 @@ class SubnetWeightsChecker:
                 f"'{monitor_cmd_str}' command failed with error {exc}")
         else:
             self._log_info("Discord monitor notification successfully sent.")
-
-
-def main(options):
-    if DEBUG:
-        bittensor.logging.enable_debug()
-    else:
-        bittensor.logging.enable_info()
-
-    bittensor.logging.info("")
-    bittensor.logging.info(f"Starting {SCRIPT_NAME}")
-    bittensor.logging.info("")
-
-    SubnetWeightsChecker(options)
-
-
-if __name__ == "__main__":
-    options = parse_args()
-
-    # Importing bittensor here suppresses the --help info
-    import bittensor
-    from bittensor.core.async_subtensor import AsyncSubtensor
-    from bittensor_wallet import Wallet
-
-    main(options)

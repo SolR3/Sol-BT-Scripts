@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+
+# standard imports
+import os
+import sys
+
+# Add local manual_weights_setter module to path
+sys.path = [os.path.dirname(__file__)] + sys.path
+
+
+# Debugging
+DEBUG = False
+
+# Script name
+SCRIPT_NAME =  os.path.basename(__file__)
+
+
+def main(options):
+    # Import bittensor here suppress the bittensor --help info
+    import bittensor
+
+    # Import local manual_weights_setter module here
+    # to suppress the bittensor --help info
+    from manual_weights_setter.subnet_weights_checker import (
+        SubnetWeightsChecker
+    )
+
+    if DEBUG:
+        bittensor.logging.enable_debug()
+    else:
+        bittensor.logging.enable_info()
+
+    bittensor.logging.info("")
+    bittensor.logging.info(f"Starting {SCRIPT_NAME}")
+    bittensor.logging.info("")
+
+    SubnetWeightsChecker(SCRIPT_NAME, options)
+
+
+if __name__ == "__main__":
+    from manual_weights_setter.common import parse_ensure_set_weights_args
+
+    options = parse_ensure_set_weights_args()
+    main(options)
