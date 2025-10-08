@@ -1061,7 +1061,7 @@ DOCKER_LOGS_VALIDATORS_DICT = {
 }
 
 
-GIT_TAG_VALIDATORS = [2, 50, 59, 70]
+GIT_TAG_VALIDATORS = [2, 50, 70]
 
 
 def _run_checker(checker_class, options):
