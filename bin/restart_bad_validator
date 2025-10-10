@@ -108,6 +108,13 @@ def parse_args():
              f"Default: {DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME}")
 
     parser.add_argument(
+        "--code-repo-path",
+        action="append",
+        help="When specified, check this path for git code updates. When not specified, "
+             "the current directory is checked. This arg can be specified multiple times "
+             "to check multiple code repos.")
+
+    parser.add_argument(
         "--do-vtrust-check",
         action="store_true",
         dest="do_check_vtrust",
@@ -759,156 +766,184 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
     log_prefix = "CHECK CODE UPDATE"
 
     def _init_setup(self, options):
-        pass
+        self._code_repo_paths = (
+            [os.path.expanduser(p) for p in options.code_repo_path]
+            if options.code_repo_path else [os.getcwd()]
+        )
 
     def _run(self):
         self._log_info("")
         self._log_info("Checking for code updates.")
         self._log_info("")
-
-        get_cmd = "git rev-parse HEAD"
-        pull_cmd = "git pull --autostash"
         
         while True:
-            # Get commit then pull then get commit again. First get commit is in case
-            # the code was manually pulled while we were waiting. This ensures that
-            # we are always comparing the correct commits.
-            try:
-                process = subprocess.run(
-                    shlex.split(get_cmd), check=True, stdout=subprocess.PIPE
-                )
-            except subprocess.CalledProcessError as exc:
-                self._log_error(
-                    f"'{get_cmd}' command failed with error: {exc}"
-                )
-            else:
-                current_commit = process.stdout.decode().strip()
-                try:
-                    subprocess.run(shlex.split(pull_cmd), check=True)
-                except subprocess.CalledProcessError as exc:
+            do_restart = False
+            for code_repo_path in self._code_repo_paths:
+                self._log_info("")
+                self._log_info(f"Checking repo path: {code_repo_path}")
+                self._log_info("")
+                if not os.path.isdir(code_repo_path):
                     self._log_error(
-                        f"'{pull_cmd}' command failed with error: {exc}"
+                        f"Repo directory path does not exist: {code_repo_path}"
                     )
-                else:
-                    try:
-                        process = subprocess.run(
-                            shlex.split(get_cmd), check=True, stdout=subprocess.PIPE
-                        )
-                    except subprocess.CalledProcessError as exc:
-                        self._log_error(
-                            f"'{get_cmd}' command failed with error: {exc}"
-                        )
-                    else:
-                        new_commit = process.stdout.decode().strip()
-                        self._log_info("")
-                        self._log_info(f"Current commit: {current_commit}")
-                        self._log_info(f"New commit: {new_commit}")
-                        if current_commit != new_commit:
-                            self._log_info("Commits changed.")
-                            self._restarter.do_restart(
-                                "Pulled new code from git repo.",
-                                force_notify=True
-                            )
-                        else:
-                            self._log_info("Commits are the same. Doing nothing.")
+                    continue
+
+                git_command = (
+                    f"git -C {code_repo_path}"
+                    if code_repo_path != os.getcwd()
+                    else "git"
+                )
+                do_restart |= self._check_code_repo(git_command)
+
+            if do_restart:
+                self._restarter.do_restart(
+                    "Pulled new code from git repo.",
+                    force_notify=True
+                )
 
             sleep_interval = 900  # 15 minutes
             self._log_info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
 
+    def _check_code_repo(self, git_command):
+        get_cmd = f"{git_command} rev-parse HEAD"
+        pull_cmd = f"{git_command} pull --autostash"
 
-class ValidatorCheckerCodeUpdateLatestTag(ValidatorChecker):
-    log_prefix = "CHECK CODE UPDATE"
+        # Get commit then pull then get commit again. First get commit is in case
+        # the code was manually pulled while we were waiting. This ensures that
+        # we are always comparing the correct commits.
+        try:
+            process = subprocess.run(
+                shlex.split(get_cmd), check=True, stdout=subprocess.PIPE
+            )
+        except subprocess.CalledProcessError as exc:
+            self._log_error(
+                f"'{get_cmd}' command failed with error: {exc}"
+            )
+            return False
 
-    def _init_setup(self, options):
-        pass
+        current_commit = process.stdout.decode().strip()
 
-    def _run(self):
+        try:
+            subprocess.run(shlex.split(pull_cmd), check=True)
+        except subprocess.CalledProcessError as exc:
+            self._log_error(
+                f"'{pull_cmd}' command failed with error: {exc}"
+            )
+            return False
+
+        try:
+            process = subprocess.run(
+                shlex.split(get_cmd), check=True, stdout=subprocess.PIPE
+            )
+        except subprocess.CalledProcessError as exc:
+            self._log_error(
+                f"'{get_cmd}' command failed with error: {exc}"
+            )
+            return False
+
+        new_commit = process.stdout.decode().strip()
         self._log_info("")
-        self._log_info("Checking for code updates.")
+        self._log_info(f"Current commit: {current_commit}")
+        self._log_info(f"New commit: {new_commit}")
+        if current_commit != new_commit:
+            self._log_info("Commits changed.")
+            return True
+
+        self._log_info("Commits are the same. Doing nothing.")
+        return False
+
+
+class ValidatorCheckerCodeUpdateLatestTag(ValidatorCheckerCodeUpdate):
+
+    def _check_code_repo(self, git_command):
+        fetch_cmd = f"{git_command} fetch"
+        get_cmd = f"{git_command} describe --tags"
+        current_cmd = f"{git_command} rev-parse HEAD"
+        latest_cmd = f"{git_command} rev-list --tags --max-count=1"
+        pull_cmd = f"{git_command} checkout"
+
+        try:
+            subprocess.run(shlex.split(fetch_cmd), check=True)
+        except subprocess.CalledProcessError as exc:
+            self._log_error(
+                f"'{fetch_cmd}' command failed with error: {exc}"
+            )
+            return False
+
+        try:
+            process = subprocess.run(
+                shlex.split(current_cmd), check=True, stdout=subprocess.PIPE
+            )
+        except subprocess.CalledProcessError as exc:
+            self._log_error(
+                f"'{current_cmd}' command failed with error: {exc}"
+            )
+            return False
+
+        current_rev = process.stdout.decode().strip()
+
+        try:
+            get_current_cmd = f"{get_cmd} {current_rev}"
+            process = subprocess.run(
+                shlex.split(get_current_cmd), check=True, stdout=subprocess.PIPE
+            )
+        except subprocess.CalledProcessError as exc:
+            self._log_error(
+                f"'{get_current_cmd}' command failed with error: {exc}"
+            )
+            return False
+
+        current_tag = process.stdout.decode().strip()
+
+        try:
+            process = subprocess.run(
+                shlex.split(latest_cmd), check=True, stdout=subprocess.PIPE
+            )
+        except subprocess.CalledProcessError as exc:
+            self._log_error(
+                f"'{latest_cmd}' command failed with error: {exc}"
+            )
+            return False
+
+        latest_rev = process.stdout.decode().strip()
+
+        try:
+            get_latest_cmd = f"{get_cmd} {latest_rev}"
+            process = subprocess.run(
+                shlex.split(get_latest_cmd), check=True, stdout=subprocess.PIPE
+            )
+        except subprocess.CalledProcessError as exc:
+            self._log_error(
+                f"'{get_latest_cmd}' command failed with error: {exc}"
+            )
+            return False
+
+        latest_tag = process.stdout.decode().strip()
+
         self._log_info("")
+        self._log_info(f"Current tag: {current_tag}")
+        self._log_info(f"Latest tag: {latest_tag}")
+        if latest_tag.endswith("-rc"):
+            self._log_info("Latest tag is not a release. Doing nothing.")
+            return False
 
-        fetch_cmd = "git fetch"
-        get_cmd = "git describe --tags {}"
-        current_cmd = "git rev-parse HEAD"
-        latest_cmd = "git rev-list --tags --max-count=1"
-        pull_cmd = "git checkout {}"
-
-        while True:
+        if current_tag != latest_tag:
+            self._log_info("Tags are different.")
             try:
-                subprocess.run(shlex.split(fetch_cmd), check=True)
+                pull_latest_cmd = f"{pull_cmd} {latest_tag}"
+                subprocess.run(shlex.split(pull_latest_cmd), check=True)
             except subprocess.CalledProcessError as exc:
                 self._log_error(
-                    f"'{fetch_cmd}' command failed with error: {exc}"
+                    f"'{pull_latest_cmd}' command failed with error: {exc}"
                 )
-            else:
-                try:
-                    process = subprocess.run(
-                        shlex.split(current_cmd), check=True, stdout=subprocess.PIPE
-                    )
-                except subprocess.CalledProcessError as exc:
-                    self._log_error(
-                        f"'{current_cmd}' command failed with error: {exc}"
-                    )
-                else:
-                    current_rev = process.stdout.decode().strip()
-                    try:
-                        get_current_cmd = get_cmd.format(current_rev)
-                        process = subprocess.run(
-                            shlex.split(get_current_cmd), check=True, stdout=subprocess.PIPE
-                        )
-                    except subprocess.CalledProcessError as exc:
-                        self._log_error(
-                            f"'{get_current_cmd}' command failed with error: {exc}"
-                        )
-                    else:
-                        current_tag = process.stdout.decode().strip()
-                        try:
-                            process = subprocess.run(
-                                shlex.split(latest_cmd), check=True, stdout=subprocess.PIPE
-                            )
-                        except subprocess.CalledProcessError as exc:
-                            self._log_error(
-                                f"'{latest_cmd}' command failed with error: {exc}"
-                            )
-                        else:
-                            latest_rev = process.stdout.decode().strip()
-                            try:
-                                get_latest_cmd = get_cmd.format(latest_rev)
-                                process = subprocess.run(
-                                    shlex.split(get_latest_cmd), check=True, stdout=subprocess.PIPE
-                                )
-                            except subprocess.CalledProcessError as exc:
-                                self._log_error(
-                                    f"'{get_latest_cmd}' command failed with error: {exc}"
-                                )
-                            else:
-                                latest_tag = process.stdout.decode().strip()
-                                self._log_info("")
-                                self._log_info(f"Current tag: {current_tag}")
-                                self._log_info(f"Latest tag: {latest_tag}")
-                                if latest_tag.endswith("-rc"):
-                                    self._log_info("Latest tag is not a release. Doing nothing.")
-                                elif current_tag != latest_tag:
-                                    self._log_info("Tags are different.")
-                                    try:
-                                        pull_latest_cmd = pull_cmd.format(latest_tag)
-                                        subprocess.run(shlex.split(pull_latest_cmd), check=True)
-                                    except subprocess.CalledProcessError as exc:
-                                        self._log_error(
-                                            f"'{pull_latest_cmd}' command failed with error: {exc}"
-                                        )
-                                    else:
-                                        self._restarter.do_restart(
-                                            "Pulled new code from git repo.",
-                                            force_notify=True
-                                        )
-                                else:
-                                    self._log_info("Tags are the same. Doing nothing.")
+                return False
 
-            sleep_interval = 900  # 15 minutes
-            self._log_info(f"Sleeping for {sleep_interval} seconds.")
-            time.sleep(sleep_interval)
+            self._log_info("Pulled latest tag.")
+            return True
+
+        self._log_info("Tags are the same. Doing nothing.")
+        return False
 
 
 class ValidatorRestarterRsnScript:
