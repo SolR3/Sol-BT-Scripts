@@ -501,6 +501,9 @@ class ValidatorCheckerDockerLogErrorsSn52(ValidatorCheckerDockerLogErrors):
     _generic_patterns = []
     _subnet_patterns = [r"websockets\.exceptions\.InvalidStatus"]
 
+class ValidatorCheckerDockerLogErrorsSn59(ValidatorCheckerDockerLogErrors):
+    _subnet_patterns = [r"\[websockets\.client\] unexpected internal error"]
+
 class ValidatorCheckerDockerLogErrorsSn64(ValidatorCheckerDockerLogErrors):
     _generic_patterns = []
     _subnet_patterns = []  # [r"Weights set successfully\."]
@@ -1092,6 +1095,7 @@ PM2_LOGS_VALIDATORS_DICT = {
 
 DOCKER_LOGS_VALIDATORS_DICT = {
     52: ValidatorCheckerDockerLogErrorsSn52,
+    59: ValidatorCheckerDockerLogErrorsSn59,
     64: ValidatorCheckerDockerLogErrorsSn64,
 }
 
