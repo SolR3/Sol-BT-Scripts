@@ -769,16 +769,70 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
     log_prefix = "CHECK CODE UPDATE"
 
     def _init_setup(self, options):
-        self._code_repo_paths = (
-            [os.path.expanduser(p) for p in options.code_repo_path]
-            if options.code_repo_path else [os.getcwd()]
-        )
+        if options.code_repo_path:
+            # Get the input repo paths
+            self._code_repo_paths = [
+                os.path.expanduser(p) for p in options.code_repo_path
+            ]
+        else:
+            # Get the repo path from the current working directory
+            git_cmd = "git rev-parse --show-toplevel"
+            try:
+                process = subprocess.run(
+                    shlex.split(git_cmd), check=True, stdout=subprocess.PIPE
+                )
+            except subprocess.CalledProcessError:
+                self._log_error(
+                    f"'{os.getcwd()}' is not a git repository."
+                )
+                # Try to get the code repo path from the validator pm2 processes
+                # if they exist.
+                self._get_repo_paths_from_pm2(options)
+            else:
+                self._code_repo_paths = [process.stdout.decode().strip()]
+
+    def _get_repo_paths_from_pm2(self, options):
+        # Try to get the code repo path from the validator pm2 processes
+        # if they exist.
+        if not options.pm2_processes:
+            self._code_repo_paths = []
+            return
+
+        repo_paths = set()
+
+        process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
+        pm2_output = json.loads(process.stdout)
+
+        for pm2_process in pm2_output:
+            pm2_name = pm2_process["name"]
+            if pm2_name in options.pm2_processes:
+                pm2_cwd = pm2_process["pm2_env"]["pm_cwd"]
+                git_cmd = f"git -C {pm2_cwd} rev-parse --show-toplevel"
+                try:
+                    process = subprocess.run(
+                        shlex.split(git_cmd), check=True, stdout=subprocess.PIPE
+                    )
+                except subprocess.CalledProcessError:
+                    continue
+                repo_path = process.stdout.decode().strip()
+                self._log_info(
+                    f"Found repo path from '{pm2_name}' pm2 process: {repo_path}"
+                )
+                repo_paths.add(repo_path)
+
+        self._code_repo_paths = list(repo_paths)
 
     def _run(self):
         self._log_info("")
         self._log_info("Checking for code updates.")
         self._log_info("")
         
+        if not self._code_repo_paths:
+            self._log_error(
+                "No valid git repo path. Not checking for code updates."
+            )
+            return
+
         while True:
             do_restart = False
             for code_repo_path in self._code_repo_paths:
