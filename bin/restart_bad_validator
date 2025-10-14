@@ -782,7 +782,7 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
                     shlex.split(git_cmd), check=True, stdout=subprocess.PIPE
                 )
             except subprocess.CalledProcessError:
-                self._log_error(
+                self._log_warning(
                     f"'{os.getcwd()}' is not a git repository."
                 )
                 # Try to get the code repo path from the validator pm2 processes
