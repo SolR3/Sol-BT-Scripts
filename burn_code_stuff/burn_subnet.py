@@ -499,9 +499,11 @@ class BurnValidator:
                 return 5  # Wait 5 blocks (1 minute) before trying again.
 
             # TODO: mechanisms
-            mech_count = subtensor.get_mechanism_count(netuid=self.config.netuid)
-            if mech_count > 1:
-                logger.warning("Subnet %i mech count: %i", self.config.netuid, mech_count)
+            # Sol: Commenting this as it's getting this error:
+            # AttributeError: 'Subtensor' object has no attribute 'get_mechanism_count'
+            # mech_count = subtensor.get_mechanism_count(netuid=self.config.netuid)
+            # if mech_count > 1:
+            #     logger.warning("Subnet %i mech count: %i", self.config.netuid, mech_count)
 
             # Get the burn uid
             burn_uid = self.determine_burn_uid(subtensor, neurons)
