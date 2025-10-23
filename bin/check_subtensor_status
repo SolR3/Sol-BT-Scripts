@@ -20,9 +20,9 @@ LOCAL_SUBTENSORS = [
     "datacenter01",
     "lite-archive",
     "ws://subtensor-archive.rizzo.network:9945",
-    "ws://remote-full-archive.rizzo.network:9944",
-    "ws://remote-full-archive.rizzo.network:9945",
-    "ws://remote-full-archive.rizzo.network:9946",
+    # "ws://remote-full-archive.rizzo.network:9944",
+    # "ws://remote-full-archive.rizzo.network:9945",
+    # "ws://remote-full-archive.rizzo.network:9946",
 ]
 FINNEY_INTERVAL = 120  # In minutes
 
