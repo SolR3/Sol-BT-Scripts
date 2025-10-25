@@ -2,6 +2,7 @@
 
 # standard imports
 import argparse
+import asyncio
 import json
 import multiprocessing
 import os
@@ -74,11 +75,11 @@ class SubnetsChecker:
         self._json_file = os.path.join(options.json_folder, self._json_file_name)
         self._network = options.network
         self._discord_notify = options.discord_notify
-        self._check_subnets()
+        asyncio.run(self._check_subnets())
 
-    def _check_subnets(self):
+    async def _check_subnets(self):
         print("\nChecking subnets")
-        new_registered_subnet_list = self._get_registered_subnets()
+        new_registered_subnet_list = await self._get_registered_subnets()
         current_registered_subnet_list = self._read_subnets_json_file()
         self._compare_and_notify(
             current_registered_subnet_list,
@@ -86,18 +87,23 @@ class SubnetsChecker:
         )
         self._write_subnets_json_file(new_registered_subnet_list)
 
-    def _get_registered_subnets(self):
+    async def _get_registered_subnets(self):
         t1 = time.time()
-        registered_subnet_list = []
 
         print(f"Connecting to subtensor: {self._network}")
         try:
-            with bittensor.subtensor(network=self._network) as subtensor:
-                for subnet in subtensor.get_subnets()[1:]:
-                    print(f"Checking subnet {subnet}")
-                    metagraph = subtensor.metagraph(netuid=subnet)
-                    if metagraph.hparams.registration_allowed:
-                        registered_subnet_list.append(str(subnet))
+            async with AsyncSubtensor(network=self._network) as subtensor:
+                netuids = await subtensor.get_subnets()
+                netuids = netuids[1:]
+                print(f"Checking subnets:\n{netuids}")
+
+                block = await subtensor.block
+                metagraphs = await asyncio.gather(
+                    *[
+                        subtensor.metagraph(netuid=netuid, block=block)
+                        for netuid in netuids
+                    ]
+                )
         except Exception as err:
             print("")
             print(f"ERROR: Subtensor connection failed on '{self._network}'")
@@ -106,7 +112,11 @@ class SubnetsChecker:
             raise SubtensorConnectionError
 
         t2 = time.time() - t1
-        print(f"Gathered subnet data in {t2:.3} seconds")
+        print(f"\nGathered subnet data in {t2:.3} seconds")
+
+        registered_subnet_list = [
+            str(m.netuid) for m in metagraphs if m.hparams.registration_allowed
+        ]
         return registered_subnet_list
 
     def _compare_and_notify(
@@ -132,6 +142,7 @@ class SubnetsChecker:
             ),
             key=int
         )
+        print("")
         print(f"Current registered subnets: {current_registered_subnet_list}")
         print(f"New registered subnets:     {new_registered_subnet_list}")
         print(f"Added subnets: {added_subnets}")
@@ -229,10 +240,6 @@ def get_subtensor_network(local_subtensor, local_subtensor_index):
     return f"ws://subtensor-{network_name}.rizzo.network:9944"
 
 
-# def check_subnets(options):
-#     SubnetsChecker(options)
-
-
 def main(options):
     interval_seconds = round(options.interval * 60)
     local_subtensor_index = -1
@@ -272,6 +279,6 @@ if __name__ == "__main__":
     options = _parse_args()
 
     # Importing bittensor here suppresses the --help info
-    import bittensor
+    from bittensor.core.async_subtensor import AsyncSubtensor
 
     main(options)
