@@ -3,6 +3,7 @@
 # standard imports
 import argparse
 import json
+import multiprocessing
 import os
 import subprocess
 import time
@@ -43,12 +44,6 @@ def _parse_args():
         help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
              "List the flag without a value to rotate between all local "
              "subtensors. When not specified, use the 'finney' network subtensor."
-    )
-
-    parser.add_argument(
-        "-p", "--subprocess",
-        action="store_true",
-        help="When specified, run everything in a subprocess."
     )
 
     parser.add_argument(
@@ -251,12 +246,9 @@ def main(options):
         )
 
         try:
-            if options.subprocess:
-                args = [options]
-                with multiprocessing.Pool(processes=1) as pool:
-                    pool.apply(SubnetsChecker, args)
-            else:
-                SubnetsChecker(options)
+            args = [options]
+            with multiprocessing.Pool(processes=1) as pool:
+                pool.apply(SubnetsChecker, args)
         except SubtensorConnectionError:
             if options.local_subtensor is None:
                 print("Rotating subtensors and trying again.")
@@ -281,8 +273,5 @@ if __name__ == "__main__":
 
     # Importing bittensor here suppresses the --help info
     import bittensor
-
-    if options.subprocess:
-        import multiprocessing
 
     main(options)

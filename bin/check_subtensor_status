@@ -4,6 +4,7 @@
 import argparse
 from collections import namedtuple
 import json
+import multiprocessing
 import os
 import time
 
@@ -28,6 +29,8 @@ FINNEY_INTERVAL = 120  # In minutes
 
 SubtensorData = namedtuple("SubtensorData", ["name", "block_diff", "error"])
 
+mp_queue = multiprocessing.Queue()
+
 
 def _parse_args():
     parser = argparse.ArgumentParser()
@@ -45,12 +48,6 @@ def _parse_args():
         default=0,
         help="The number of minutes between validator data gathering. If 0 or not "
              "specified then the data is gathered only once."
-    )
-
-    parser.add_argument(
-        "-p", "--subprocess",
-        action="store_true",
-        help="When specified, run the bittensor calls in subprocesses."
     )
 
     return parser.parse_args()
@@ -188,22 +185,13 @@ def main(options):
 
         if minutes_until_get_finney_block <= 0:
             print("Getting finney block.")
-            if options.subprocess:
-                result = run_in_subprocess("finney")
-                try:
-                    finney_block = int(result)
-                except ValueError:
-                    finney_block = None
-                    print("\nERROR: Failed to get finney block.")
-                    print(result)
-            else:
-                try:
-                    with bittensor.subtensor() as subtensor:
-                        finney_block = subtensor.block
-                except Exception as err:
-                    finney_block = None
-                    print("\nERROR: Failed to get finney block.")
-                    print(f"{type(err).__name__}: {err}\n")
+            result = run_in_subprocess("finney")
+            try:
+                finney_block = int(result)
+            except ValueError:
+                finney_block = None
+                print("\nERROR: Failed to get finney block.")
+                print(result)
             minutes_until_get_finney_block = FINNEY_INTERVAL
         else:
             print(
@@ -218,20 +206,13 @@ def main(options):
                 else f"ws://subtensor-{subtensor_name}.rizzo.network:9944"
             )
             print(f"Getting block for {network}")
-            if options.subprocess:
-                result = run_in_subprocess(network)
-                try:
-                    block = int(result)
-                except ValueError:
-                    block = None
-                    error = result
-            else:
-                try:
-                    with bittensor.subtensor(network=network) as subtensor:
-                        block = subtensor.block
-                except Exception as err:
-                    block = None
-                    error = f"{type(err).__name__}: {err}"
+            result = run_in_subprocess(network)
+            try:
+                block = int(result)
+            except ValueError:
+                block = None
+                error = result
+
             if block is not None:
                 delay_blocks = int((time.time() - delay_start) / 12)
                 if finney_block is not None:
@@ -282,10 +263,6 @@ def main(options):
 
 if __name__ == "__main__":
     options = _parse_args()
-
-    if options.subprocess:
-        import multiprocessing
-        mp_queue = multiprocessing.Queue()
 
     # Bittensor import
     import bittensor
