@@ -31,6 +31,16 @@ def main(options):
     except subprocess.CalledProcessError as exc:
         print(f"\nERROR: Command failed with error: {exc}")
 
+    pm2_save_cmd = ["pm2", "save"]
+    pm2_save_cmd_str = shlex.join(pm2_save_cmd)
+    print("")
+    print(f"Running command:\n{pm2_save_cmd_str}")
+    print("")
+    try:
+        subprocess.run(pm2_save_cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"\nERROR: Command failed with error: {exc}")
+
 
 if __name__ == "__main__":
     options = _parse_args()

@@ -36,6 +36,7 @@ class EnsureSetWeightsStarter:
 
         # Delete the existing pm2 process and start a new pm2 process.
         self._restart_process()
+        self._save_pm2()
 
     def _find_existing_process(self):
         """ Find the existing ensure_set_weights pm2 process. If an
@@ -150,3 +151,14 @@ class EnsureSetWeightsStarter:
             subprocess.run(pm2_start_cmd, check=True)
         except subprocess.CalledProcessError as exc:
             print(f"ERROR: Command failed with error: {exc}")
+
+    def _save_pm2(self):
+        pm2_save_cmd = ["pm2", "save"]
+        pm2_save_cmd_str = shlex.join(pm2_save_cmd)
+        print("")
+        print(f"Running command:\n{pm2_save_cmd_str}")
+        print("")
+        try:
+            subprocess.run(pm2_save_cmd, check=True)
+        except subprocess.CalledProcessError as exc:
+            print(f"\nERROR: Command failed with error: {exc}")
