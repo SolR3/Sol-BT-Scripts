@@ -706,6 +706,9 @@ class ValidatorCheckerPm2LogErrorsSn55(ValidatorCheckerPm2LogErrors):
 class ValidatorCheckerPm2LogErrorsSn79(ValidatorCheckerPm2LogErrors):
     _generic_patterns = []
 
+class ValidatorCheckerPm2LogErrorsSn83(ValidatorCheckerPm2LogErrors):
+    _generic_patterns = []
+
 # class ValidatorCheckerPm2LogErrorsSn91(ValidatorCheckerPm2LogErrors):
 #     _subnet_patterns = [r"Successfully set weights"]
 
@@ -1179,6 +1182,7 @@ PM2_LOGS_VALIDATORS_DICT = {
     52: ValidatorCheckerPm2LogErrorsSn52,
     55: ValidatorCheckerPm2LogErrorsSn55,
     79: ValidatorCheckerPm2LogErrorsSn79,
+    83: ValidatorCheckerPm2LogErrorsSn83,
     # 91: ValidatorCheckerPm2LogErrorsSn91,
 }
 
