@@ -75,10 +75,10 @@ class ProcessChecker:
         print(f"ERROR - {self._pm2_process}: {message}")
 
     def _run(self):
-        self._log_info("")
-        self._log_info("Checking for stopped logs.")
-
         while True:
+            self._log_info("")
+            self._log_info("Checking for stopped logs.")
+
             process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
             pm2_output = json.loads(process.stdout)
             for pm2_process in pm2_output:
@@ -86,6 +86,11 @@ class ProcessChecker:
                     out_log_file =  pm2_process["pm2_env"]["pm_out_log_path"]
                     error_log_file =  pm2_process["pm2_env"]["pm_err_log_path"]
                     break
+            else:
+                self._log_error("pm2 process is not running.")
+                self._log_info(f"Sleeping for {self._restart_threshold} seconds.")
+                time.sleep(self._restart_threshold)
+                continue
 
             self._log_info("")
             self._log_info(f"Out Log file: {out_log_file}")
@@ -176,7 +181,7 @@ def main(options):
     with ThreadPoolExecutor(max_workers=len(options.pm2_process_times)) as executor:
         for pm2_process, stopped_logs_threshold in options.pm2_process_times.items():
             print("\n===============================")
-            print(f"Running chceck for {pm2_process}.")
+            print(f"Running check for {pm2_process}.")
             print("===============================\n")
 
             executor.submit(
