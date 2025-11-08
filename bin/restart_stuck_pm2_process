@@ -126,10 +126,9 @@ class ProcessChecker:
     def _do_restart(self, msg):
         self._log_info("Restarting pm2 process.")
         try:
-            subprocess.run(["pm2", "restart", self._pm2_process])
+            subprocess.run(["pm2", "restart", self._pm2_process], check=True)
         except subprocess.CalledProcessError as exc:
-            self._log_error(
-                f"Restart failed with error: {exc}")
+            self._log_error(f"Restart failed with error: {exc}")
             self._send_monitor_notification(
                 f"Failed to restart '{self._pm2_process}' on "
                 f"{self._process_location} - {msg}"
