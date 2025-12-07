@@ -98,8 +98,10 @@ def send_files(session, source, dest):
         return
 
     for source_path in source_paths:
+        source_mode = os.stat(source_path).st_mode
         dest_path = os.path.join(dest, os.path.basename(source_path))
         session.put(source_path, dest_path)
+        session.chmod(dest_path, source_mode)
 
 
 def receive_files(session, source, dest):
@@ -130,8 +132,10 @@ def receive_files(session, source, dest):
         source_paths = [source]
 
     for source_path in source_paths:
+        source_mode = session.stat(source_path).st_mode
         dest_path = os.path.join(dest, os.path.basename(source_path))
         session.get(source_path, dest_path)
+        os.chmod(dest_path, source_mode)
 
 
 def do_transfer(options):
