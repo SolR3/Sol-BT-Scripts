@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+
+import argparse
+from enum import auto, StrEnum
+import os
+import paramiko
+import stat
+
+
+DEFAULT_PORT = 22
+
+class Direction(StrEnum):
+    TO = auto()
+    FROM = auto()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--host",
+        required=True,
+        help="The ssh host address.")
+    
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        help=f"The ssh port of the host address. Default is {DEFAULT_PORT}")
+    
+    parser.add_argument(
+        "--user",
+        required=True,
+        help="The ssh user name to authenticate with.")
+    
+    auth_group = parser.add_mutually_exclusive_group(required=True)
+
+    auth_group.add_argument(
+        "--ssh-key",
+        help="The ssh key to use for authenticating.")
+
+    auth_group.add_argument(
+        "--password",
+        help="The password for authenticating the ssh user.")
+
+    parser.add_argument(
+        "--source",
+        required=True,
+        help="The source file or folder.")
+    
+    parser.add_argument(
+        "--dest",
+        required=True,
+        help="The destination folder.")
+    
+    direction_group = parser.add_mutually_exclusive_group(required=True)
+
+    direction_group.add_argument(
+        "--to",
+        dest="direction",
+        action="store_const",
+        const=Direction.TO,
+        help="Transfer the file from the source to the destination.")
+    
+    direction_group.add_argument(
+        "--from",
+        dest="direction",
+        action="store_const",
+        const=Direction.FROM,
+        help="Transfer the file from the destination to the source.")
+
+    return parser.parse_args()
+
+
+def send_files(session, source, dest):
+    if not os.path.exists(source):
+        print(f"ERROR: Source path {source} does not exist.")
+        return
+
+    if os.path.isdir(source):
+        print(f"ERROR: Source path {source} is a directory. "
+              "Transfering a directory is not yet implemented.")
+        return
+        # TODO - Recursively gather all files to transfer.
+        # source_files = []
+    else:
+        # This is a file.
+        source_paths = [source]
+
+    try:
+        dest_stat = session.stat(dest)
+    except FileNotFoundError:
+        print(f"ERROR: Destination path {dest} does not exist.")
+        return
+
+    if not stat.S_ISDIR(dest_stat.st_mode):
+        print(f"ERROR: Destination path {dest} is not a directory.")
+        return
+
+    for source_path in source_paths:
+        dest_path = os.path.join(dest, os.path.basename(source_path))
+        session.put(source_path, dest_path)
+
+
+def receive_files(session, source, dest):
+    if not os.path.isdir(dest):
+        print(f"ERROR: Destination path {dest} does not exist as a directory.")
+        return
+
+    try:
+        source_stat = session.stat(source)
+    except FileNotFoundError:
+        print(f"ERROR: Source path {source} does not exist.")
+        return
+
+    if stat.S_ISDIR(source_stat.st_mode):
+        # This is a directory. For now just return with an error.
+        print(f"ERROR: Source path {source} is a directory. "
+              "Transfering a directory is not yet implemented.")
+        return
+        # TODO - Recursively gather all files to transfer.
+        # source_files = []
+        # for source_file in session.listdir(source):
+        #     source_path = os.path.join(source, source_file)
+        #     source_stat = session.stat(source_path)
+        #     if stat.S_ISREG(source_stat.st_mode):
+        #         source_files.append(source_path)
+    else:
+        # This is a file.
+        source_paths = [source]
+
+    for source_path in source_paths:
+        dest_path = os.path.join(dest, os.path.basename(source_path))
+        session.get(source_path, dest_path)
+
+
+def do_transfer(options):
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    if options.ssh_key:
+        ssh_key = paramiko.RSAKey.from_private_key_file(options.ssh_key)
+        auth_arg = {"pkey": ssh_key}
+    else:
+        auth_arg = {"password": options.password}
+
+    client.connect(
+        options.host,
+        port=options.port,
+        username=options.user,
+        **auth_arg)
+    
+    try:
+        session = client.open_sftp()
+        try:
+            if options.direction == Direction.TO:
+                send_files(session, options.source, options.dest)
+            else:  # options.direction == Direction.FROM
+                receive_files(session, options.source, options.dest)
+        finally:
+            session.close()
+    finally:
+        client.close()
+
+
+def main():
+    options = parse_args()
+    do_transfer(options)
+
+
+if __name__ == "__main__":
+    main()
