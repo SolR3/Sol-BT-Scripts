@@ -10,8 +10,8 @@ import stat
 DEFAULT_PORT = 22
 
 class Direction(StrEnum):
-    TO = auto()
-    FROM = auto()
+    SEND = auto()
+    RECEIVE = auto()
 
 
 def parse_args():
@@ -56,17 +56,17 @@ def parse_args():
     direction_group = parser.add_mutually_exclusive_group(required=True)
 
     direction_group.add_argument(
-        "--to",
+        "--send",
         dest="direction",
         action="store_const",
-        const=Direction.TO,
+        const=Direction.SEND,
         help="Transfer the file from the source to the destination.")
     
     direction_group.add_argument(
-        "--from",
+        "--receive",
         dest="direction",
         action="store_const",
-        const=Direction.FROM,
+        const=Direction.RECEIVE,
         help="Transfer the file from the destination to the source.")
 
     return parser.parse_args()
@@ -100,6 +100,7 @@ def send_files(session, source, dest):
     for source_path in source_paths:
         source_mode = os.stat(source_path).st_mode
         dest_path = os.path.join(dest, os.path.basename(source_path))
+        print(f"\nCopying local file: {source_path}\nTo remote file: {dest_path}")
         session.put(source_path, dest_path)
         session.chmod(dest_path, source_mode)
 
@@ -134,6 +135,7 @@ def receive_files(session, source, dest):
     for source_path in source_paths:
         source_mode = session.stat(source_path).st_mode
         dest_path = os.path.join(dest, os.path.basename(source_path))
+        print(f"\nCopying remote file: {source_path}\nTo local file: {dest_path}")
         session.get(source_path, dest_path)
         os.chmod(dest_path, source_mode)
 
@@ -157,9 +159,9 @@ def do_transfer(options):
     try:
         session = client.open_sftp()
         try:
-            if options.direction == Direction.TO:
+            if options.direction == Direction.SEND:
                 send_files(session, options.source, options.dest)
-            else:  # options.direction == Direction.FROM
+            else:  # options.direction == Direction.RECEIVE
                 receive_files(session, options.source, options.dest)
         finally:
             session.close()
