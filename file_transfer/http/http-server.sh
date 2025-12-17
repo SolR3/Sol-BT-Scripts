@@ -16,7 +16,7 @@ PASSWORD="TaR3a5hJa6Kt0R5"
 sudo ufw allow $PORT/tcp comment 'for serving folder conaining files to be transfered'
 
 # Start HTTP servers with basic authentication on the specified ports
-$(dirname "$0")/http_server $PORT "$SERVE_PATH" "$USERNAME" "$PASSWORD" &
+python3 $(dirname "$0")/http_server $PORT "$SERVE_PATH" "$USERNAME" "$PASSWORD" &
 HTTP_SERVER_PID=$!
 
 # Trap to close the port and terminate the http_server process when stopping the script
