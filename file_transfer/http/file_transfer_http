@@ -61,7 +61,7 @@ def do_transfer(options):
 
     dest_path = os.path.join(options.dest, options.source)
     # This is in case the --source file is a relative path containing subfolders.
-    os.makedirs(os.path.dirname(dest_path))
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     print(f"\nCopying remote file: {source_url}\nTo local file: {dest_path}")
     with open(dest_path, "w") as fp:
         fp.write(response.content.decode())
