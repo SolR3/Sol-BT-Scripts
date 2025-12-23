@@ -34,9 +34,10 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "-n", "--netuid",
+        "-n",
         type=int,
         required=True,
+        dest="netuid",
         help="The uid of the subnet.")
 
     parser.add_argument(
