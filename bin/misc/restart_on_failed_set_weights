@@ -110,7 +110,7 @@ class ValidatorCheckerWeightsFailed(ValidatorChecker):
         self._log_info("Checking for set weights log pattern.")
         self._log_info("")
 
-        self._subtensor = bittensor.subtensor(network=options.network)
+        self._subtensor = bittensor.Subtensor(network=options.network)
         metagraph = self._subtensor.metagraph(netuid=self._netuid)
         self._rizzo_uid = metagraph.hotkeys.index(self._rizzo_hotkey)
 
