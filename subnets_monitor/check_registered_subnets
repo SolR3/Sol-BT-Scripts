@@ -92,8 +92,11 @@ class SubnetsChecker:
 
         print(f"Connecting to subtensor: {self._network}")
         try:
-            async with AsyncSubtensor(network=self._network) as subtensor:
-                netuids = await subtensor.get_subnets()
+            async with bittensor.AsyncSubtensor(network=self._network) as subtensor:
+                try:
+                    netuids = await subtensor.get_all_subnets_netuid()
+                except AttributeError:
+                    netuids = await subtensor.get_subnets()
                 netuids = netuids[1:]
                 print(f"Checking subnets:\n{netuids}")
 
@@ -279,6 +282,6 @@ if __name__ == "__main__":
     options = _parse_args()
 
     # Importing bittensor here suppresses the --help info
-    from bittensor.core.async_subtensor import AsyncSubtensor
+    import bittensor
 
     main(options)
