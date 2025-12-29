@@ -177,7 +177,7 @@ class MetagraphData:
 
 def get_metagraph_data(network, netuid, mp_queue_name):
     mp_queue = globals()[mp_queue_name]
-    with bittensor.subtensor(network=network) as subtensor:
+    with bittensor.Subtensor(network=network) as subtensor:
         metagraph = subtensor.metagraph(netuid=netuid)
         metagraph_data = MetagraphData(metagraph)
         mp_queue.put(metagraph_data)
