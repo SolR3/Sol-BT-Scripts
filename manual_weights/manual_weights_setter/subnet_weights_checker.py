@@ -7,7 +7,6 @@ import time
 
 # bittensor imports
 import bittensor
-from bittensor.core.async_subtensor import AsyncSubtensor
 from bittensor_wallet import Wallet
 
 
@@ -133,7 +132,7 @@ class SubnetWeightsChecker:
             self._log_info("")
             self._log_info(f"Connecting to subtensor network: {network}")
             try:
-                async with AsyncSubtensor(network=network) as subtensor:
+                async with bittensor.AsyncSubtensor(network=network) as subtensor:
                     await self._check_and_set_weights(subtensor, netuids)
                 break
             except Exception as err:
