@@ -104,14 +104,14 @@ class BurnValidator:
         )
 
         # Adds subtensor specific arguments.
-        bt.subtensor.add_args(run_command_parser)
+        bt.Subtensor.add_args(run_command_parser)
 
         # Adds wallet specific arguments.
         Wallet.add_args(run_command_parser)
 
         # Parse the config.
         try:
-            config = bt.config(parser)
+            config = bt.Config(parser)
         except ValueError as e:
             logger.error("Error parsing config: %s", e)
             sys.exit(1)
@@ -477,7 +477,7 @@ class BurnValidator:
         logger.info("Wallet: %s", wallet)
 
         # Initialize subtensor.
-        with bt.subtensor(config=self.config) as subtensor:
+        with bt.Subtensor(config=self.config) as subtensor:
             logger.info("Subtensor: %s", subtensor)
 
             # Check if registered.
