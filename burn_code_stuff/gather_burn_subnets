@@ -2,11 +2,9 @@
 
 # standard imports
 import argparse
-import importlib
 import json
 import os
 import subprocess
-import sys
 import time
 
 
@@ -96,36 +94,17 @@ def run(options):
             continue
 
         script_path = pm2_env["pm_exec_path"]
-        script_dir, script_name = os.path.split(script_path)
-        script_module_name, script_ext = os.path.splitext(script_name)
-        if script_ext != ".py":
-            continue
-
-        if script_dir not in sys.path:
-            sys.path = [script_dir] + sys.path
-
-        print(f"Checking {script_module_name}")
-        try:
-            script_module = importlib.import_module(script_module_name)
-        except ModuleNotFoundError:
+        script_name = os.path.split(script_path)[1]
+        if script_name != "burn_subnet.py":
             continue
 
         # This is how we know the process is a burn code process
-        for netuid_attr in ["MAINNET_NETUID", "DEFAULT_NETUID"]:
-            if hasattr(script_module, netuid_attr):
-                try:
-                    netuid = int(getattr(script_module, netuid_attr))
-                except TypeError:
-                    netuid = None
-                if "args" in pm2_env:
-                    script_args = pm2_env["args"]
-                    if "--netuid" in script_args:
-                        netuid_index = script_args.index("--netuid") + 1
-                        netuid = int(script_args[netuid_index])
-
-                if netuid is not None:
-                    burn_subnets.add(netuid)
-                break
+        if "args" in pm2_env:
+            script_args = pm2_env["args"]
+            if "--netuid" in script_args:
+                netuid_index = script_args.index("--netuid") + 1
+                netuid = int(script_args[netuid_index])
+                burn_subnets.add(netuid)
 
     burn_subnets = sorted(burn_subnets)
 
