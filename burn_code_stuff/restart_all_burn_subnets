@@ -17,6 +17,13 @@ def parse_args():
              "(without the bin/activate part)."
     )
 
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=2,
+        help="The interval in blocks between restarts. Defaults to 2 blocks."
+    )
+
     return parser.parse_args()
 
 
@@ -37,12 +44,10 @@ def main(options):
 
     # even out the restarts across two epochs
     num_burn_subnets = len(burn_subnets)
-    wait_seconds = int(720 * 12 / num_burn_subnets)
+    wait_seconds = options.interval * 12
     for i, burn_subnet in enumerate(burn_subnets):
         script_lines.append(f"echo Restarting subnet {burn_subnet}")
         burn_command = f"{start_burn_script} {venv_path} {burn_subnet}"
-        if burn_subnet == 104:
-            burn_command += " --target_uid 29 --set_weights_interval 100"
         script_lines.append(burn_command)
         if i < num_burn_subnets - 1:
             script_lines.extend(
