@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+
+
+def main():
+    import bittensor
+
+    with bittensor.Subtensor() as subtensor:
+        metadata = subtensor.substrate.get_metadata()
+
+    for module in metadata.value()["pallets"]:
+        if module["name"] == "SubtensorModule":
+            break
+
+    functions = sorted(e["name"] for e in module["storage"]["entries"])
+    print("")
+    print("\n".join(functions))
+    print("")
+
+
+if __name__ == "__main__":
+    main()

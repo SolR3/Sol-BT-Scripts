@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+
+import argparse
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "netuid",
+        type=int,
+        help="The uid of the subnet.")
+
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.0,
+        help="The weight threshold above which to print the value. Defaults to 0.")
+
+    return parser.parse_args()
+
+
+def main(args):
+    import bittensor
+
+    with bittensor.Subtensor() as subtensor:
+        owner_hotkey = subtensor.get_subnet_owner_hotkey(args.netuid)
+        owner_uid = subtensor.get_uid_for_hotkey_on_subnet(owner_hotkey, args.netuid)
+        metagraph = subtensor.metagraph(args.netuid, lite=False)
+
+    print(f"\nOwner:\n==========\n{owner_uid} - {owner_hotkey}\n\n")
+    
+    print("Weights:\n==========")
+    for uid in range(metagraph.num_uids):
+        if metagraph.validator_permit[uid]:
+            print(f"{uid} - {metagraph.hotkeys[uid]}")
+            print([(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > args.threshold])
+            print("")
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    main(args)

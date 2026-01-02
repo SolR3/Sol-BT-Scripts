@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+
+import argparse
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "netuid",
+        type=int,
+        help="The uid of the subnet.")
+
+    return parser.parse_args()
+
+
+def main(args):
+    import bittensor
+
+    cost = bittensor.Subtensor().recycle(args.netuid)
+    print(f"Registration cost for subnet {args.netuid} = {cost.unit}{cost.tao}")
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    main(args)
