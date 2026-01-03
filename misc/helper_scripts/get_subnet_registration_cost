@@ -17,7 +17,7 @@ def main(args):
     import bittensor
 
     cost = bittensor.Subtensor().recycle(args.netuid)
-    print(f"Registration cost for subnet {args.netuid} = {cost.unit}{cost.tao}")
+    print(f"\nRegistration cost for subnet {args.netuid} = {cost.unit}{cost.tao}\n")
 
 
 if __name__ == "__main__":
