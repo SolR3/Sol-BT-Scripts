@@ -33,7 +33,8 @@ def main(args):
     print("Weights:\n==========")
     for uid in range(metagraph.num_uids):
         if metagraph.validator_permit[uid]:
-            print(f"{uid} - {metagraph.hotkeys[uid]}")
+            updated = metagraph.block - metagraph.last_update[uid]
+            print(f"{uid} - {metagraph.hotkeys[uid]} (U: {updated})")
             print([(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > args.threshold])
             print("")
 
