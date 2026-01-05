@@ -32,9 +32,10 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "-n", "--netuid",
+        "-n",
         type=int,
         required=True,
+        dest="netuid",
         help="The uid of the subnet.")
 
     parser.add_argument(
@@ -176,7 +177,6 @@ def get_metagraph_data(network, netuid, pickle_file, log_prefix):
     with bittensor.subtensor(network=network) as subtensor:
         metagraph = subtensor.metagraph(netuid=netuid)
         metagraph_data = MetagraphData(metagraph)
-        # todo: write pickle file
         bittensor.logging.info(f"{log_prefix}: Writing pickle file: {pickle_file}")
         with open(pickle_file, "wb") as fp:
             pickle.dump(metagraph_data, fp)
@@ -252,7 +252,6 @@ class ValidatorChecker:
                 self._log_error("Rotating subtensors and trying again.")
                 time.sleep(1)
 
-        # todo: read pickle file
         if not os.path.isfile(pickle_file):
             self._log_error(
                 f"Pickle file {pickle_file} does not exist, "
@@ -727,6 +726,9 @@ class ValidatorCheckerPm2LogErrorsSn55(ValidatorCheckerPm2LogErrors):
 class ValidatorCheckerPm2LogErrorsSn79(ValidatorCheckerPm2LogErrors):
     _generic_patterns = []
 
+class ValidatorCheckerPm2LogErrorsSn83(ValidatorCheckerPm2LogErrors):
+    _generic_patterns = []
+
 # class ValidatorCheckerPm2LogErrorsSn91(ValidatorCheckerPm2LogErrors):
 #     _subnet_patterns = [r"Successfully set weights"]
 
@@ -808,7 +810,12 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
                 )
                 # Try to get the code repo path from the validator pm2 processes
                 # if they exist.
-                self._get_repo_paths_from_pm2(options)
+                self._code_repo_paths = self._get_repo_paths_from_pm2(options)
+                if not self._code_repo_paths:
+                    # Maybe this is running docker containers. Try to get the
+                    # code repo path from the rsn.sh script.
+                    self._code_repo_paths = \
+                        self._get_repo_paths_from_restart_script(options)
             else:
                 self._code_repo_paths = [process.stdout.decode().strip()]
 
@@ -816,8 +823,7 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
         # Try to get the code repo path from the validator pm2 processes
         # if they exist.
         if not options.pm2_processes:
-            self._code_repo_paths = []
-            return
+            return []
 
         repo_paths = set()
 
@@ -841,7 +847,39 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
                 )
                 repo_paths.add(repo_path)
 
-        self._code_repo_paths = list(repo_paths)
+        return list(repo_paths)
+
+    def _get_repo_paths_from_restart_script(self, options):
+        # Try to get the code repo path from the rsn.sh script.
+        cd_regex = re.compile(r"^\s*cd\s+(?P<dir>.+?)\s+")
+        repo_paths = set()
+        cd_dir = ""
+
+        restart_script = os.path.expanduser(options.restart_script)
+        with open(restart_script, "r") as fp:
+            script_lines = fp.readlines()
+
+        for line in script_lines:
+            regex_match = cd_regex.match(line)
+            if not regex_match:
+                continue
+            cd_dir = os.path.join(
+                cd_dir, os.path.expanduser(regex_match.group("dir"))
+            )
+            git_cmd = f"git -C {cd_dir} rev-parse --show-toplevel"
+            try:
+                process = subprocess.run(
+                    shlex.split(git_cmd), check=True, stdout=subprocess.PIPE
+                )
+            except subprocess.CalledProcessError:
+                continue
+            repo_path = process.stdout.decode().strip()
+            self._log_info(
+                f"Found repo path from {restart_script} script: {repo_path}"
+            )
+            repo_paths.add(repo_path)
+
+        return list(repo_paths)
 
     def _run(self):
         self._log_info("")
@@ -1164,6 +1202,7 @@ PM2_LOGS_VALIDATORS_DICT = {
     52: ValidatorCheckerPm2LogErrorsSn52,
     55: ValidatorCheckerPm2LogErrorsSn55,
     79: ValidatorCheckerPm2LogErrorsSn79,
+    83: ValidatorCheckerPm2LogErrorsSn83,
     # 91: ValidatorCheckerPm2LogErrorsSn91,
 }
 
@@ -1175,7 +1214,7 @@ DOCKER_LOGS_VALIDATORS_DICT = {
 }
 
 
-GIT_TAG_VALIDATORS = [2, 50, 70]
+GIT_TAG_VALIDATORS = [2, 50, 70, 81]
 
 
 def _run_checker(checker_class, options):

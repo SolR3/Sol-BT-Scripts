@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+
+# Note - This script cannot set up the venv because every runner script is different.
+#        Some restarters need to run from the same venv as the validator, others need
+#        to run in a separate restarter venv, and others need to run outside of a venv.
+
+import argparse
+import os
+import shlex
+import subprocess
+import sys
+
+
+RESTARTER_SCRIPT = "bin/restart_bad_validator"
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-n",
+        type=int,
+        required=True,
+        dest="netuid",
+        help="The uid of the subnet.")
+
+    parser.add_argument(
+        "--restart-script",
+        help="The restart script path. Defaults to ~/rsn<netuid>.sh")
+
+    return parser.parse_known_args()
+
+
+def error_and_exit(msg):
+    print(f"ERROR: {msg}")
+    sys.exit(1)
+
+
+def ensure_restart_script(args):
+    # Set the restart script if it's not explicitly passed in.
+    if args.restart_script is None:
+        args.restart_script = os.path.expanduser(f"~/rsn{args.netuid}.sh")
+
+    # Verify that the restart script exists.
+    if not os.path.isfile(args.restart_script):
+        error_and_exit(f"Restart script {args.restart_script} does not exist.")
+
+    # Verify that the restart script has exec permission.
+    if not os.access(args.restart_script, os.X_OK):
+        error_and_exit(f"Restart script {args.restart_script} does not have exec permission.")
+
+
+def update_git_repo():
+    # Find git repo base folder from local __file__ path
+    script_dir = os.path.dirname(__file__)
+    git_cmd = f"git -C {script_dir} rev-parse --show-toplevel"
+    try:
+        process = subprocess.run(shlex.split(git_cmd), check=True, stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError as exc:
+        # Should never ever get here
+        error_and_exit(f"Could not find git repo from path '{script_dir}': {exc}")
+    repo_path = process.stdout.decode().strip()
+
+    # Run git pull
+    git_cmd = f"git -C {repo_path} pull --autostash"
+    print(f"Updating git repo: '{git_cmd}'")
+    try:
+        subprocess.run(shlex.split(git_cmd), check=True)
+    except subprocess.CalledProcessError as exc:
+        error_and_exit(f"git pull command failed: {exc}")
+
+    return repo_path
+
+
+def start_restarter(args, repo_path):
+    # Determine restarter name.
+    pm2_name = f"restarter_sn{args.netuid}"
+
+    # Delete existing restarter pm2 process if it exists.
+    # Don't check for a failure. That just means that the process wasn't already running.
+    pm2_stop_cmd = ["pm2", "delete", pm2_name]
+    print(f"Stopping any existing pm2 process: '{shlex.join(pm2_stop_cmd)}'")
+    subprocess.run(pm2_stop_cmd)
+
+    # Start new restarter pm2 process.
+    restarter_script = os.path.join(repo_path, RESTARTER_SCRIPT)
+    pm2_start_cmd = [
+        "pm2", "start", "--interpreter", "python3", "--name", pm2_name, restarter_script,
+        "--", "-n", str(args.netuid), "--restart-script", args.restart_script] + args.extra_args
+    print(f"Starting pm2 process: '{shlex.join(pm2_start_cmd)}'")
+    try:
+        subprocess.run(pm2_start_cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        error_and_exit(f"pm2 start command failed: {exc}")
+
+    # Save pm2 state.
+    pm2_save_cmd = ["pm2", "save"]
+    print(f"Saving pm2 state: '{shlex.join(pm2_save_cmd)}'")
+    try:
+        subprocess.run(pm2_save_cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        error_and_exit(f"pm2 save command failed: {exc}")
+
+
+def main():
+    args, extra_args = parse_args()
+    args.extra_args = extra_args
+
+    # Set the restart script if it's not explicitly passed in.
+    # Error and exit if it doesn't exist of if it doesn't have exec permission.
+    ensure_restart_script(args)
+
+    # Find the git repo containing the restarter script and update it.
+    repo_path = update_git_repo()
+
+    # Delete existing restarter pm2 process if it exists.
+    # Start new restarter pm2 process.
+    # Save pm2 state.
+    start_restarter(args, repo_path)
+
+
+if __name__ == "__main__":
+    main()
