@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+
+
+def main():
+    import bittensor
+
+    print("")
+    print("Subnets with multiple mechanisms")
+    print("=================================")
+
+    with bittensor.Subtensor() as subtensor:
+        for netuid in subtensor.get_all_subnets_netuid()[1:]:
+            mechs = subtensor.get_mechanism_count(netuid)
+            if mechs != 1:
+                emission = subtensor.get_mechanism_emission_split(netuid)
+                emission = ", ".join([f"{e}%" for e in emission])
+                netuid = f"{netuid}:"
+                print(f"{netuid:<4} {mechs} ({emission})")
+
+    print("")
+
+
+if __name__ == "__main__":
+    main()
