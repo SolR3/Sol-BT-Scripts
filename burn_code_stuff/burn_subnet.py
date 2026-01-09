@@ -465,7 +465,7 @@ class BurnValidator:
                 wait_for_finalization=True,
             )
             if not success:
-                logger.error("Error setting weights on mechanism %i: %s", (mechid, message))
+                logger.error("Error setting weights on mechanism %i: %s", mechid, message)
             else:
                 logger.info("Weights set on mechanism %i.", mechid)
             any_success |= success
