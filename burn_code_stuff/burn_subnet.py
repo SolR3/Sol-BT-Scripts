@@ -452,21 +452,25 @@ class BurnValidator:
         return uids, weights
 
     def submit_weights(self, subtensor, wallet, uids, weights, version_key):
-        success, message = subtensor.set_weights(
-            wallet,
-            self.config.netuid,
-            uids,
-            weights,
-            version_key=version_key,
-            wait_for_inclusion=True,
-            wait_for_finalization=True,
-        )
-        if not success:
-            logger.error("Error setting weights: %s", message)
-            return False
+        any_success = False
+        for mechid in range(subtensor.get_mechanism_count(self.config.netuid)):
+            success, message = subtensor.set_weights(
+                wallet,
+                self.config.netuid,
+                uids,
+                weights,
+                mechid=mechid,
+                version_key=version_key,
+                wait_for_inclusion=True,
+                wait_for_finalization=True,
+            )
+            if not success:
+                logger.error("Error setting weights on mechanism %i: %s", (mechid, message))
+            else:
+                logger.info("Weights set on mechanism %i.", mechid)
+            any_success |= success
 
-        logger.info("Weights set.")
-        return True
+        return any_success
 
     def run_burn_code(self):
         # Initialize wallet.
@@ -497,13 +501,6 @@ class BurnValidator:
             if not neurons:
                 logger.warning("Unable to retrieve neurons, retrying shortly...")
                 return 5  # Wait 5 blocks (1 minute) before trying again.
-
-            # TODO: mechanisms
-            # Sol: Commenting this as it's getting this error:
-            # AttributeError: 'Subtensor' object has no attribute 'get_mechanism_count'
-            # mech_count = subtensor.get_mechanism_count(netuid=self.config.netuid)
-            # if mech_count > 1:
-            #     logger.warning("Subnet %i mech count: %i", self.config.netuid, mech_count)
 
             # Get the burn uid
             burn_uid = self.determine_burn_uid(subtensor, neurons)
