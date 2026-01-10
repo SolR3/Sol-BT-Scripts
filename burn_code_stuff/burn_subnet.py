@@ -453,7 +453,15 @@ class BurnValidator:
 
     def submit_weights(self, subtensor, wallet, uids, weights, version_key):
         any_success = False
-        for mechid in range(subtensor.get_mechanism_count(self.config.netuid)):
+
+        mech_count = subtensor.get_mechanism_count(self.config.netuid)
+        mech_split = subtensor.get_mechanism_emission_split(self.config.netuid)
+        if len(mech_count) == 1:
+            mechids = [0]
+        else:
+            mechids = sorted(range(mech_count), key=lambda m: 100 - mech_split[m])
+
+        for mechid in mechids:
             success, message = subtensor.set_weights(
                 wallet,
                 self.config.netuid,
