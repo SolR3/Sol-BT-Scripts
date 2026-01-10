@@ -456,7 +456,7 @@ class BurnValidator:
 
         mech_count = subtensor.get_mechanism_count(self.config.netuid)
         mech_split = subtensor.get_mechanism_emission_split(self.config.netuid)
-        if len(mech_count) == 1:
+        if mech_count == 1:
             mechids = [0]
         else:
             mechids = sorted(range(mech_count), key=lambda m: 100 - mech_split[m])
