@@ -1,15 +1,34 @@
 #!/usr/bin/env python3
 
+# standard imports
+import argparse
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-n",
+        type=int,
+        dest="netuids",
+        nargs="+",
+        help="The uids of the subnets to check. If not specified then all subnets are checked.")
+
+    return parser.parse_args()
+
 
 def main():
     import bittensor
+
+    args = parse_args()
 
     print("")
     print("Subnets with multiple mechanisms")
     print("=================================")
 
     with bittensor.Subtensor() as subtensor:
-        for netuid in subtensor.get_all_subnets_netuid()[1:]:
+        netuids = args.netuids or subtensor.get_all_subnets_netuid()[1:]
+        for netuid in netuids:
             mechs = subtensor.get_mechanism_count(netuid)
             if mechs != 1:
                 emission = subtensor.get_mechanism_emission_split(netuid)
