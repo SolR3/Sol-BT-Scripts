@@ -13,14 +13,15 @@ LOCAL_TIMEZONE = "MST7MDT"
 JSON_FILE_NAME = "subtensor_status.json"
 TIMESTAMP_FILE_NAME = "timestamp.json"
 LOCAL_SUBTENSORS = [
-    "cali",
-    "candyland",
-    "la",
-    "moonbase",
-    "titan",
-    "datacenter01",
+    "ws://subtensor-cali.rizzo.network:9944",
+    "ws://subtensor-candyland.rizzo.network:9944",
+    "ws://subtensor-la.rizzo.network:9944",
+    "ws://subtensor-moonbase.rizzo.network:9944",
+    "ws://subtensor-titan.rizzo.network:9944",
+    "ws://subtensor-datacenter01.rizzo.network:9944",
     "ws://subtensor-lite-archive.rizzo.network:9933",
-    "ws://subtensor-archive.rizzo.network:9945",
+    "ws://160.72.54.207:9944 (local archive)",
+    # "ws://subtensor-archive.rizzo.network:9945",
     # "ws://remote-full-archive.rizzo.network:9944",
     # "ws://remote-full-archive.rizzo.network:9945",
     # "ws://remote-full-archive.rizzo.network:9946",
@@ -201,10 +202,7 @@ def main(options):
 
         delay_start = time.time()
         for subtensor_name in LOCAL_SUBTENSORS:
-            network = (
-                subtensor_name if ":" in subtensor_name
-                else f"ws://subtensor-{subtensor_name}.rizzo.network:9944"
-            )
+            network = subtensor_name.split(maxsplit=1)[0]
             print(f"Getting block for {network}")
             result = run_in_subprocess(network)
             try:
@@ -225,7 +223,7 @@ def main(options):
 
             subtensor_data.append(
                 SubtensorData(
-                    name=network,
+                    name=subtensor_name,
                     block_diff=block_diff,
                     error=error,
                 )
