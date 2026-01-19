@@ -16,29 +16,69 @@ def parse_args():
         type=float,
         default=0.0,
         help="The weight threshold above which to print the value. Defaults to 0.")
+    
+    parser.add_argument(
+        "--diff",
+        nargs=2,
+        help="Diff the weights of two hotkeys rather than printing out all weights.")
 
     return parser.parse_args()
 
 
-def main(args):
+def print_all_weights(owner_hotkey, owner_uid, threshold, metagraph):
+    print(f"\nOwner:\n==========\n{owner_uid} - {owner_hotkey}\n\n")
+    
+    print("Weights:\n==========")
+    for uid in range(metagraph.num_uids):
+        if metagraph.validator_permit[uid]:
+            vtrust = metagraph.Tv[uid]
+            updated = metagraph.block - metagraph.last_update[uid]
+            print(f"{uid} - {metagraph.hotkeys[uid]} (vT: {vtrust:.3f}  U: {updated})")
+            print([(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > threshold])
+            print("")
+
+
+def print_weight_diffs(hotkey_a, hotkey_b, threshold, metagraph):
+    uid_a = metagraph.hotkeys.index(hotkey_a)
+    uid_b = metagraph.hotkeys.index(hotkey_b)
+    vtrust_a = metagraph.Tv[uid_a]
+    vtrust_b = metagraph.Tv[uid_b]
+    updated_a = metagraph.block - metagraph.last_update[uid_a]
+    updated_b = metagraph.block - metagraph.last_update[uid_b]
+
+    print("Hotkeys:\n=========")
+    print(f"{uid_a:<3} - {metagraph.hotkeys[uid_a]} (vT: {vtrust_a:.3f}  U: {updated_a})")
+    print(f"{uid_b:<3} - {metagraph.hotkeys[uid_b]} (vT: {vtrust_b:.3f}  U: {updated_b})")
+    print("")
+
+    weight_diffs = metagraph.weights[uid_a] - metagraph.weights[uid_b]
+    weight_diffs = [(i, float(w)) for i, w in enumerate(weight_diffs) if abs(w) > threshold]
+
+    print("Weight Diffs:\n==============")
+    print(f"{len(weight_diffs)} differences\n")
+    for uid, weight_diff in weight_diffs:
+        weight_a = metagraph.weights[uid_a][uid]
+        weight_b = metagraph.weights[uid_b][uid]
+        print(f"{uid}:")
+        print(f"{weight_diff}  ({weight_a} - {weight_b})")
+        print("")
+
+
+def main():
     import bittensor
+
+    args = parse_args()
 
     with bittensor.Subtensor() as subtensor:
         owner_hotkey = subtensor.get_subnet_owner_hotkey(args.netuid)
         owner_uid = subtensor.get_uid_for_hotkey_on_subnet(owner_hotkey, args.netuid)
         metagraph = subtensor.metagraph(args.netuid, lite=False)
 
-    print(f"\nOwner:\n==========\n{owner_uid} - {owner_hotkey}\n\n")
-    
-    print("Weights:\n==========")
-    for uid in range(metagraph.num_uids):
-        if metagraph.validator_permit[uid]:
-            updated = metagraph.block - metagraph.last_update[uid]
-            print(f"{uid} - {metagraph.hotkeys[uid]} (U: {updated})")
-            print([(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > args.threshold])
-            print("")
+    if args.diff:
+        print_weight_diffs(*args.diff, args.threshold, metagraph)
+    else:
+        print_all_weights(owner_hotkey, owner_uid, args.threshold, metagraph)
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    main()
