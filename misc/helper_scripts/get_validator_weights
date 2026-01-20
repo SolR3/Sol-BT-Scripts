@@ -33,8 +33,9 @@ def print_all_weights(owner_hotkey, owner_uid, threshold, metagraph):
         if metagraph.validator_permit[uid]:
             vtrust = metagraph.Tv[uid]
             updated = metagraph.block - metagraph.last_update[uid]
-            print(f"{uid} - {metagraph.hotkeys[uid]} (vT: {vtrust:.3f}  U: {updated})")
-            print([(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > threshold])
+            weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > threshold]
+            print(f"{uid} - {metagraph.hotkeys[uid]} (Weights: {len(weights)}  vT: {vtrust:.3f}  U: {updated})")
+            print(weights)
             print("")
 
 
