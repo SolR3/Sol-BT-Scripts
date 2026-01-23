@@ -3,6 +3,17 @@
 import argparse
 
 
+KNOWN_COLDKEYS = {
+    "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo": "Rizzo",
+    "5DywxdtESjskgPZrDXL86qV44SpPgJuqs9X6noyJJwX9PaSD": "Rt21",
+    "5HBtpwxuGNL1gwzwomwR7sjwUt8WXYSuWcLYN6f9KpTZkP4k": "OTF",
+    "5E9fVY1jexCNVMjd2rdBsAxeamFGEMfzHcyTn2fHgdHeYc5p": "Yuma",
+    "5FHxxe8ZKYaNmGcSLdG5ekxXeZDhQnk9cbpHdsJW8RunGpSs": "Kraken",
+    "5Cu7NFMULPDkaQkr3nciUVMADvCfqtnjeuYrZpuoMXo6H8MY": "TAO.com",
+    "5CMUVyexHFz68M5wtuuD8iQCgEMb8e8U2FpvQfWmoYST6dQo": "MUV",
+}
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
@@ -31,9 +42,18 @@ def print_all_weights(owner_hotkey, owner_uid, threshold, metagraph):
     print("Weights:\n==========")
     for uid in range(metagraph.num_uids):
         if metagraph.validator_permit[uid]:
+            if uid == owner_uid:
+                name = "Owner"
+            else:
+                coldkey = metagraph.coldkeys[uid]
+                name = KNOWN_COLDKEYS.get(coldkey)
+
             vtrust = metagraph.Tv[uid]
             updated = metagraph.block - metagraph.last_update[uid]
             weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > threshold]
+
+            if name:
+                print(f"{name}:")
             print(f"{uid} - {metagraph.hotkeys[uid]} (Weights: {len(weights)}  vT: {vtrust:.3f}  U: {updated})")
             print(weights)
             print("")
