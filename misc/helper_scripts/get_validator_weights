@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument(
         "--diff",
         nargs=2,
-        help="Diff the weights of two hotkeys rather than printing out all weights.")
+        help="Diff the weights of two uids or hotkeys rather than printing out all weights.")
 
     return parser.parse_args()
 
@@ -59,9 +59,7 @@ def print_all_weights(owner_hotkey, owner_uid, threshold, metagraph):
             print("")
 
 
-def print_weight_diffs(hotkey_a, hotkey_b, threshold, metagraph):
-    uid_a = metagraph.hotkeys.index(hotkey_a)
-    uid_b = metagraph.hotkeys.index(hotkey_b)
+def print_weight_diffs(uid_a, uid_b, threshold, metagraph):
     vtrust_a = metagraph.Tv[uid_a]
     vtrust_b = metagraph.Tv[uid_b]
     updated_a = metagraph.block - metagraph.last_update[uid_a]
@@ -85,6 +83,20 @@ def print_weight_diffs(hotkey_a, hotkey_b, threshold, metagraph):
         print("")
 
 
+def get_uids(diff_a, diff_b, metagraph):
+    try:
+        uid_a = int(diff_a)
+    except ValueError:
+        uid_a = metagraph.hotkeys.index(diff_a)
+
+    try:
+        uid_b = int(diff_b)
+    except ValueError:
+        uid_b = metagraph.hotkeys.index(diff_b)
+
+    return uid_a, uid_b
+
+
 def main():
     import bittensor
 
@@ -96,7 +108,8 @@ def main():
         metagraph = subtensor.metagraph(args.netuid, lite=False)
 
     if args.diff:
-        print_weight_diffs(*args.diff, args.threshold, metagraph)
+        uids = get_uids(*args.diff, metagraph)
+        print_weight_diffs(*uids, args.threshold, metagraph)
     else:
         print_all_weights(owner_hotkey, owner_uid, args.threshold, metagraph)
 
