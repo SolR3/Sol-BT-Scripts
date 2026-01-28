@@ -233,6 +233,7 @@ class BurnValidator:
 
         return neurons
 
+    # TODO: Clean this method up. Test it on sn20, sn86, and another subnet.
     def get_burn_uid(self, subtensor, neurons):
         try:
             subnet_info = subtensor.get_subnet_info(self.config.netuid)
@@ -294,11 +295,34 @@ class BurnValidator:
             return sn_owner_uid
 
         logger.info("found %i owner neurons", len(owner_neurons))
-        # Prefer the neuron that registered earliest on the subnet.
-        burn_candidate = min(
-            owner_neurons,
-            key=lambda neuron: getattr(neuron, "registration_block", float("inf"))
+        # The registration_block is "inf" for all neurons. Falling back to using
+        # the owner hotkey instead.
+        # # Prefer the neuron that registered earliest on the subnet.
+        # burn_candidate = min(
+        #     owner_neurons,
+        #     key=lambda neuron: getattr(neuron, "registration_block", float("inf"))
+        # )
+        sn_owner_hotkey = subtensor.query_subtensor(
+            "SubnetOwnerHotkey",
+            params=[self.config.netuid],
         )
+        logger.info("SN Owner Hotkey: %s", sn_owner_hotkey)
+        sn_owner_uid = subtensor.get_uid_for_hotkey_on_subnet(
+            hotkey_ss58=sn_owner_hotkey,
+            netuid=self.config.netuid,
+        )
+        logger.info("SN Owner UID: %s", sn_owner_uid)
+
+        burn_candidate = None
+        for neuron in owner_neurons:
+            neuron_hotkey = getattr(neuron, "hotkey", None) or getattr(neuron, "hotkey_ss58", None)
+            if neuron_hotkey == sn_owner_hotkey:
+                burn_candidate = neuron
+                break
+
+        if burn_candidate is None:
+            logger.warning("Could not find a burn candidate, falling back to owner UID")
+            return sn_owner_uid
 
         burn_uid = getattr(burn_candidate, "uid", None)
         if burn_uid is None:
