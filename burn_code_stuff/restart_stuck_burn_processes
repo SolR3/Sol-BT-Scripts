@@ -13,7 +13,7 @@ import time
 # Constants
 # TODO: Change this to 400 once all burn subnets are on the latest code
 # that sets weights every epoch instead of every two epochs.
-STOPPED_LOGS_THRESHOLD_BLOCKS = (360 * 2) + 10  # Two epochs plus 5 blocks padding
+STOPPED_LOGS_THRESHOLD_BLOCKS = 400  # Two epochs plus 40 blocks padding
 WAIT_BLOCKS = 180  # Half an epoch
 PROCESS_LOCATION = "Super5"
 DISCORD_MONITOR_URL = (
