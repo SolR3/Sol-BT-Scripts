@@ -54,8 +54,10 @@ class SubnetWeightsChecker:
         self._interval_blocks = round(self._check_interval / 12) # blocks
         self._discord_notify = options.discord_notify
 
+        self._metagraphs = {}
         self._wallets = {}
         for netuid in self._netuids:
+            self._metagraphs[netuid] = bittensor.core.metagraph.AsyncMetagraph(netuid, sync=False)
             self._wallets[netuid] = Wallet(  # TestWallet(
                 name="RizzoNetwork", hotkey=f"rz{netuid:03d}",
             )
@@ -145,20 +147,20 @@ class SubnetWeightsChecker:
 
     async def _check_and_set_weights(self, subtensor, netuids):
         # Get the block to pass to async calls so everything is in sync
-        # and get the metagraph for each netuid.
+        # and sync the metagraph for each netuid.
         block = await subtensor.block
-        metagraphs = await asyncio.gather(
+        await asyncio.gather(
             *[
-                subtensor.metagraph(netuid=netuid, lite=False, block=block)
+                self._metagraphs[netuid].sync(block=block, lite=False, subtensor=subtensor)
                 for netuid in netuids
             ]
         )
 
-        for i, netuid in enumerate(netuids):
+        for netuid in netuids:
             self._log_info("")
             self._log_info(f"Checking subnet {netuid}")
 
-            metagraph = metagraphs[i]
+            metagraph = self._metagraphs[netuid]
             rizzo_hotkey = self._wallets[netuid].hotkey.ss58_address
             rizzo_uid = self._get_rizzo_uid(metagraph, rizzo_hotkey)
             if rizzo_uid is None:
