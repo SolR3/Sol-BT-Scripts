@@ -311,6 +311,11 @@ class BurnValidator:
             hotkey_ss58=sn_owner_hotkey,
             netuid=self.config.netuid,
         )
+        if sn_owner_uid is None:
+            try:
+                sn_owner_uid = subtensor.metagraph(self.config.netuid).coldkeys.index(owner_coldkey)
+            except ValueError:
+                pass  # I don't know what to do here.
         logger.info("SN Owner UID: %s", sn_owner_uid)
 
         burn_candidate = None
