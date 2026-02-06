@@ -3,6 +3,7 @@
 # standard imports
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import gc
 import json
 import os
 import pty
@@ -249,6 +250,14 @@ class ValidatorCheckerBittensor(ValidatorChecker):
                 time.sleep(1)
             else:
                 break
+            finally:
+                # Garbage collect
+                try:
+                    del subtensor
+                except NameError:
+                    pass
+                else:
+                    gc.collect()
 
     def _get_rizzo_uid(self):
         if self._metagraph.netuid in self._multi_uid_hotkeys:
