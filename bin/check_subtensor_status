@@ -125,6 +125,7 @@ def print_subtensor_statuses(subtensor_data):
 
     red = "9"
     green = "10"
+    yellow = "11"
     name_padding = max([len(s.name) for s in subtensor_data])
 
     console = Console()
@@ -135,17 +136,18 @@ def print_subtensor_statuses(subtensor_data):
 
         if subtensor.error:
             subtensor_status = subtensor.error
-            subtensor_error = True
+            text_color = red
+        elif subtensor.block_diff is None:
+            subtensor_status = "Unknown"
+            text_color = yellow
         elif subtensor.block_diff > 0:
             subtensor_status = f"{subtensor.block_diff} blocks behind finney"
-            subtensor_error = True
+            text_color = red
         else:
             subtensor_status = "Operational"
-            subtensor_error = False
+            text_color = green
 
-        text_color = red if subtensor_error else green
         text_style = f"color({text_color})"
-
         text.append("\n")
         text.append(
             f"{subtensor_network} - {subtensor_status}",
