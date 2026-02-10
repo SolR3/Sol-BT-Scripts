@@ -3,8 +3,8 @@
 # standard imports
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-import gc
 import json
+import multiprocessing
 import os
 import pty
 import random
@@ -25,6 +25,10 @@ TOTAL_CHECKS = 6  # TODO: Calculate this instead of hard-coding it.
 
 # Debugging
 DEBUG = False
+
+# Multiprocessing Queues
+UPDATED_MP_QUEUE = None
+VTRUST_MP_QUEUE = None
 
 
 def parse_args():
@@ -162,6 +166,24 @@ def parse_args():
 error_logs_wait_timer = None
 
 
+class MetagraphData:
+    def __init__(self, metagraph):
+        self.netuid = metagraph.netuid
+        self.hotkeys = metagraph.hotkeys
+        self.coldkeys = metagraph.coldkeys
+        self.block = metagraph.block
+        self.last_update = metagraph.last_update
+        self.Tv = metagraph.Tv
+
+
+def get_metagraph_data(network, netuid, mp_queue_name):
+    mp_queue = globals()[mp_queue_name]
+    with bittensor.Subtensor(network=network) as subtensor:
+        metagraph = subtensor.metagraph(netuid=netuid)
+        metagraph_data = MetagraphData(metagraph)
+        mp_queue.put(metagraph_data)
+
+
 class ValidatorChecker:
     def __init__(self, options):
         self._netuid = options.netuid
@@ -226,10 +248,7 @@ class ValidatorCheckerBittensor(ValidatorChecker):
         random.seed()
         self._local_subtensor_index = random.randint(0, len(self._local_subtensors) - 1)
 
-        # Get a metagraph object. This will be synced each time the check is run.
-        self._metagraph = bittensor.Metagraph(self._netuid, sync=False)
-
-    def _sync_metagraph_data(self):
+    def _get_metagraph_data(self):
         # Loop until we get a subtensor connection
         while True:
             self._local_subtensor_index = \
@@ -239,8 +258,9 @@ class ValidatorCheckerBittensor(ValidatorChecker):
 
             self._log_info(f"Connecting to subtensor network: {network}")
             try:
-                with bittensor.Subtensor(network=network) as subtensor:
-                    self._metagraph.sync(subtensor=subtensor)
+                args = [network, self._netuid, self._mp_queue_name]
+                with multiprocessing.Pool(processes=1) as pool:
+                    pool.apply(get_metagraph_data, args)
             except Exception as err:
                 self._log_error("")
                 self._log_error(f"Subtensor connection failed on '{network}'")
@@ -250,26 +270,21 @@ class ValidatorCheckerBittensor(ValidatorChecker):
                 time.sleep(1)
             else:
                 break
-            finally:
-                # Garbage collect
-                try:
-                    del subtensor
-                except NameError:
-                    pass
-                else:
-                    gc.collect()
 
-    def _get_rizzo_uid(self):
-        if self._metagraph.netuid in self._multi_uid_hotkeys:
+        mp_queue = globals()[self._mp_queue_name]
+        return mp_queue.get()
+
+    def _get_rizzo_uid(self, metagraph_data):
+        if metagraph_data.netuid in self._multi_uid_hotkeys:
             try:
-                return self._metagraph.hotkeys.index(
-                    self._multi_uid_hotkeys[self._metagraph.netuid]
+                return metagraph_data.hotkeys.index(
+                    self._multi_uid_hotkeys[metagraph_data.netuid]
                 )
             except ValueError:
                 return None
 
         try:
-            return self._metagraph.coldkeys.index(self._rizzo_coldkey)
+            return metagraph_data.coldkeys.index(self._rizzo_coldkey)
         except ValueError:
             return None
 
@@ -279,7 +294,15 @@ class ValidatorCheckerUpdated(ValidatorCheckerBittensor):
 
     def _init_setup(self, options):
         super()._init_setup()
+
+        # Set restart threshold
         self._restart_threshold = options.updated_threshold
+
+        # Create the multiprocessing queue for passing the metagraph data
+        # from the subprocess back to the main process.
+        global UPDATED_MP_QUEUE
+        UPDATED_MP_QUEUE = multiprocessing.Queue()
+        self._mp_queue_name = "UPDATED_MP_QUEUE"
 
     def _run(self):
         self._log_info("")
@@ -289,8 +312,8 @@ class ValidatorCheckerUpdated(ValidatorCheckerBittensor):
         default_sleep_time = 4320  # 360 blocks
 
         while True:
-            self._sync_metagraph_data()
-            rizzo_uid = self._get_rizzo_uid()
+            metagraph_data = self._get_metagraph_data()
+            rizzo_uid = self._get_rizzo_uid(metagraph_data)
             if rizzo_uid is None:
                 self._log_warning(
                     f"Rizzo validator not running for subnet {self._netuid}. "
@@ -300,7 +323,7 @@ class ValidatorCheckerUpdated(ValidatorCheckerBittensor):
                 continue
 
             rizzo_updated = int(
-                self._metagraph.block - self._metagraph.last_update[rizzo_uid])
+                metagraph_data.block - metagraph_data.last_update[rizzo_uid])
             self._log_info("")
             self._log_info(f"Rizzo Updated is {rizzo_updated} blocks.")
 
@@ -346,7 +369,15 @@ class ValidatorCheckerVTrust(ValidatorCheckerBittensor):
 
     def _init_setup(self, options):
         super()._init_setup()
+
+        # Set restart threshold
         self._restart_threshold = options.vtrust_threshold
+
+        # Create the multiprocessing queue for passing the metagraph data
+        # from the subprocess back to the main process.
+        global VTRUST_MP_QUEUE
+        VTRUST_MP_QUEUE = multiprocessing.Queue()
+        self._mp_queue_name = "VTRUST_MP_QUEUE"
 
     def _run(self):
         self._log_info("")
@@ -356,8 +387,8 @@ class ValidatorCheckerVTrust(ValidatorCheckerBittensor):
         sleep_interval = 4320  # 360 blocks
 
         while True:
-            self._sync_metagraph_data()
-            rizzo_uid = self._get_rizzo_uid()
+            metagraph_data = self._get_metagraph_data()
+            rizzo_uid = self._get_rizzo_uid(metagraph_data)
             if rizzo_uid is None:
                 self._log_warning(
                     f"Rizzo validator not running for subnet {self._netuid}. "
@@ -366,7 +397,7 @@ class ValidatorCheckerVTrust(ValidatorCheckerBittensor):
                 time.sleep(sleep_interval)
                 continue
 
-            rizzo_vtrust = self._metagraph.Tv[rizzo_uid]
+            rizzo_vtrust = metagraph_data.Tv[rizzo_uid]
             vtrust_str = f"{rizzo_vtrust:.5f}"
 
             self._log_info("")
