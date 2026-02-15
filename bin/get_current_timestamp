@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+
+# standard imports
+import argparse
+import json
+import os
+import time
+
+
+LOCAL_TIMEZONE = "MST7MDT"
+TIMESTAMP_FILE_NAME = "timestamp.json"
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-j", "--json-folder",
+        required=True,
+        help="The json folder in which to write the timestamp json file."
+    )
+
+    parser.add_argument(
+        "-i", "--interval",
+        type=float,
+        default=0,
+        help="The number of minutes between timestamp writing. If 0 or not "
+             "specified then the timestamp is written only once."
+    )
+
+    return parser.parse_args()
+
+
+def format_time(total_time):
+    m = total_time/60
+    minutes = int(m)
+    seconds = round((m - minutes)*60)
+
+    runtime_text = [f"{minutes} minutes"] if minutes else []
+    if seconds or not minutes:
+        runtime_text += [f"{seconds} seconds"]
+    runtime_text = ", ".join(runtime_text)
+
+    return runtime_text
+
+
+def write_timestamp(json_folder):
+    os.environ["TZ"] = LOCAL_TIMEZONE
+    time.tzset()
+
+    current_time = time.time()
+    timestamp = {
+        "display_time": time.ctime(current_time),
+        "actual_time": int(current_time),
+    }
+    timestamp_file = os.path.join(json_folder, TIMESTAMP_FILE_NAME)
+    print(f"\nWriting timestamp file: {timestamp_file}")
+    with open(timestamp_file, "w") as fd:
+            json.dump(timestamp, fd)
+
+
+def main():
+    options = _parse_args()
+    interval_seconds = round(options.interval * 60)
+
+    while True:
+        print("\nGetting timestamp.")
+        start_time = time.time()
+
+        write_timestamp(options.json_folder)
+
+        total_seconds = round(time.time() - start_time)
+        total_time_formatted = format_time(total_seconds)
+        print(f"Timestamp writing took {total_time_formatted}.\n")
+
+        if not interval_seconds:
+            break
+
+        wait_seconds = interval_seconds - total_seconds
+        if wait_seconds > 0:
+            wait_time_formatted = format_time(wait_seconds)
+            print(f"Waiting {wait_time_formatted}.")
+            time.sleep(wait_seconds)
+        else:
+            print(
+                f"Processing took {total_seconds} seconds which is longer "
+                f"than {interval_seconds} seconds. Not waiting."
+            )
+
+
+if __name__ == "__main__":
+    main()
