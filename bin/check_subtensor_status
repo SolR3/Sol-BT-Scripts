@@ -20,11 +20,7 @@ LOCAL_SUBTENSORS = [
     "ws://subtensor-titan.rizzo.network:9944",
     "ws://subtensor-datacenter01.rizzo.network:9944",
     "ws://subtensor-lite-archive.rizzo.network:9933",
-    "ws://160.72.54.207:9944 (local archive)",
-    # "ws://subtensor-archive.rizzo.network:9945",
-    # "ws://remote-full-archive.rizzo.network:9944",
-    # "ws://remote-full-archive.rizzo.network:9945",
-    # "ws://remote-full-archive.rizzo.network:9946",
+    "ws://192.168.69.55:9944 (local archive)",
 ]
 FINNEY_INTERVAL = 120  # In minutes
 
