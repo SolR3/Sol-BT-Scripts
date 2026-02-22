@@ -16,12 +16,18 @@ import threading
 import time
 
 
+SCRIPT_NAME = os.path.basename(__file__)
+
 # Constants
 DEFAULT_UPDATED_THRESHOLD = 1500
 DEFAULT_VTRUST_THRESHOLD = 0.01
 DEFAULT_STOPPED_LOGS_THRESHOLD = 30
 DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME = 3
 TOTAL_CHECKS = 6  # TODO: Calculate this instead of hard-coding it.
+DISCORD_MONITOR_URL = (
+    "https://discord.com/api/webhooks/1328849265765777468/"
+    "yJg07DYWLJyiFZgZPaLGTmFEwiAu2JWW5osyjFVoqlMWT66JBbV9_FOcslvDdtibtcR0"
+)
 
 # Debugging
 DEBUG = False
@@ -166,6 +172,10 @@ def parse_args():
 error_logs_wait_timer = None
 
 
+class GitUpdateError(Exception):
+    pass
+
+
 class MetagraphData:
     def __init__(self, metagraph):
         self.netuid = metagraph.netuid
@@ -182,6 +192,26 @@ def get_metagraph_data(network, netuid, mp_queue_name):
         metagraph = subtensor.metagraph(netuid=netuid)
         metagraph_data = MetagraphData(metagraph)
         mp_queue.put(metagraph_data)
+
+
+def send_monitor_notification(message):
+    payload = json.dumps({"content": message})
+    monitor_cmd = [
+        "curl", "-H", "Content-Type: application/json",
+        "-d", payload, DISCORD_MONITOR_URL
+    ]
+
+    monitor_cmd_str = shlex.join(monitor_cmd)
+    bittensor.logging.info(f"Running command: '{monitor_cmd_str}'")
+
+    try:
+        subprocess.run(monitor_cmd, check=True)
+    except subprocess.CalledProcessError as exc:
+        bittensor.logging.error("Failed to send discord monitor notification.")
+        bittensor.logging.error(
+            f"'{monitor_cmd_str}' command failed with error {exc}")
+    else:
+        bittensor.logging.info("Discord monitor notification successfully sent.")
 
 
 class ValidatorChecker:
@@ -893,7 +923,12 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
                     if code_repo_path != os.getcwd()
                     else "git"
                 )
-                do_restart |= self._check_code_repo(git_command)
+                try:
+                    do_restart |= self._check_code_repo(git_command)
+                except GitUpdateError:
+                    send_monitor_notification(
+                        f"{SCRIPT_NAME}: Failed to update git repo on subnet {self._netuid}"
+                    )
 
             if do_restart:
                 self._restarter.do_restart(
@@ -920,7 +955,7 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
             self._log_error(
                 f"'{get_cmd}' command failed with error: {exc}"
             )
-            return False
+            raise GitUpdateError
 
         current_commit = process.stdout.decode().strip()
 
@@ -930,7 +965,7 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
             self._log_error(
                 f"'{pull_cmd}' command failed with error: {exc}"
             )
-            return False
+            raise GitUpdateError
 
         try:
             process = subprocess.run(
@@ -940,9 +975,10 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
             self._log_error(
                 f"'{get_cmd}' command failed with error: {exc}"
             )
-            return False
+            raise GitUpdateError
 
         new_commit = process.stdout.decode().strip()
+
         self._log_info("")
         self._log_info(f"Current commit: {current_commit}")
         self._log_info(f"New commit: {new_commit}")
@@ -962,6 +998,9 @@ class ValidatorCheckerCodeUpdateLatestTag(ValidatorCheckerCodeUpdate):
         current_cmd = f"{git_command} rev-parse HEAD"
         latest_cmd = f"{git_command} rev-list --tags --max-count=1"
         pull_cmd = f"{git_command} checkout"
+        stash_check_cmd = f"{git_command} status --porcelain --untracked-files=no"
+        stash_push_cmd = f"{git_command} stash push"
+        stash_pop_cmd = f"{git_command} stash pop"
 
         try:
             subprocess.run(shlex.split(fetch_cmd), check=True)
@@ -969,7 +1008,7 @@ class ValidatorCheckerCodeUpdateLatestTag(ValidatorCheckerCodeUpdate):
             self._log_error(
                 f"'{fetch_cmd}' command failed with error: {exc}"
             )
-            return False
+            raise GitUpdateError
 
         try:
             process = subprocess.run(
@@ -979,7 +1018,7 @@ class ValidatorCheckerCodeUpdateLatestTag(ValidatorCheckerCodeUpdate):
             self._log_error(
                 f"'{current_cmd}' command failed with error: {exc}"
             )
-            return False
+            raise GitUpdateError
 
         current_rev = process.stdout.decode().strip()
 
@@ -992,7 +1031,7 @@ class ValidatorCheckerCodeUpdateLatestTag(ValidatorCheckerCodeUpdate):
             self._log_error(
                 f"'{get_current_cmd}' command failed with error: {exc}"
             )
-            return False
+            raise GitUpdateError
 
         current_tag = process.stdout.decode().strip()
 
@@ -1004,7 +1043,7 @@ class ValidatorCheckerCodeUpdateLatestTag(ValidatorCheckerCodeUpdate):
             self._log_error(
                 f"'{latest_cmd}' command failed with error: {exc}"
             )
-            return False
+            raise GitUpdateError
 
         latest_rev = process.stdout.decode().strip()
 
@@ -1017,7 +1056,7 @@ class ValidatorCheckerCodeUpdateLatestTag(ValidatorCheckerCodeUpdate):
             self._log_error(
                 f"'{get_latest_cmd}' command failed with error: {exc}"
             )
-            return False
+            raise GitUpdateError
 
         latest_tag = process.stdout.decode().strip()
 
@@ -1028,39 +1067,61 @@ class ValidatorCheckerCodeUpdateLatestTag(ValidatorCheckerCodeUpdate):
             self._log_info("Latest tag is not a release. Doing nothing.")
             return False
 
-        if current_tag != latest_tag:
-            self._log_info("Tags are different.")
+        if current_tag == latest_tag:
+            self._log_info("Tags are the same. Doing nothing.")
+            return False
+
+        self._log_info("Tags are different.")
+
+        # Check if there are local changes.
+        try:
+            process = subprocess.run(
+                shlex.split(stash_check_cmd), check=True, stdout=subprocess.PIPE
+            )
+        except subprocess.CalledProcessError as exc:
+            self._log_error(
+                f"'{stash_check_cmd}' command failed with error: {exc}"
+            )
+            raise GitUpdateError
+
+        do_stash = bool(process.stdout.decode().strip())
+
+        # If there are local changes then we need to stash the changes
+        # before checking out latest tag.
+        if do_stash:
             try:
-                pull_latest_cmd = f"{pull_cmd} {latest_tag}"
-                subprocess.run(shlex.split(pull_latest_cmd), check=True)
+                subprocess.run(shlex.split(stash_push_cmd), check=True)
             except subprocess.CalledProcessError as exc:
                 self._log_error(
-                    f"'{pull_latest_cmd}' command failed with error: {exc}"
+                    f"'{stash_push_cmd}' command failed with error: {exc}"
                 )
-                return False
+                raise GitUpdateError
 
-            self._log_info("Pulled latest tag.")
-            return True
+        try:
+            pull_latest_cmd = f"{pull_cmd} {latest_tag}"
+            subprocess.run(shlex.split(pull_latest_cmd), check=True)
+        except subprocess.CalledProcessError as exc:
+            self._log_error(
+                f"'{pull_latest_cmd}' command failed with error: {exc}"
+            )
+            raise GitUpdateError
 
-        self._log_info("Tags are the same. Doing nothing.")
-        return False
+        # If there are local changes then we need to unstash the changes
+        # after checking out latest tag.
+        if do_stash:
+            try:
+                subprocess.run(shlex.split(stash_pop_cmd), check=True)
+            except subprocess.CalledProcessError as exc:
+                self._log_error(
+                    f"'{stash_pop_cmd}' command failed with error: {exc}"
+                )
+                raise GitUpdateError
+
+        self._log_info("Pulled latest tag.")
+        return True
 
 
 class ValidatorRestarterRsnScript:
-    # Old one on Rizzo server
-    #
-    # _discord_monitor_url = (
-        # "https://discord.com/api/webhooks/1307044814348488704/"
-        # "uYEDTqa89CI-NPau5zDyET_JTGt1r2j1u3ARvSEVCKP7-nnOfvCoUoEKwdZCLoiXKsjV"
-    # )
-    #
-    # New one on VO-R server
-    #
-    _discord_monitor_url = (
-        "https://discord.com/api/webhooks/1328849265765777468/"
-        "yJg07DYWLJyiFZgZPaLGTmFEwiAu2JWW5osyjFVoqlMWT66JBbV9_FOcslvDdtibtcR0"
-    )
-
     def __init__(self, checker_obj, options):
         self._checker_obj = checker_obj
         self._netuid = options.netuid
@@ -1092,8 +1153,6 @@ class ValidatorRestarterRsnScript:
         self._do_restart(description, force_notify)
 
     def _do_restart(self, description, force_notify):
-        script_name =  os.path.basename(__file__)
-
         self._log_info(f"Restarting subnet {self._netuid}: {description}.")
         self._log_info(f"Running script: {self._restart_script}")
         if self._restart_venv:
@@ -1125,7 +1184,7 @@ class ValidatorRestarterRsnScript:
             self._log_error(
                 f"'{restart_cmd_str}' command failed with error: {exc}")
             self._send_monitor_notification(
-                f"{script_name}: Failed to restart subnet {self._netuid} - {description}",
+                f"{SCRIPT_NAME}: Failed to restart subnet {self._netuid} - {description}",
                 force_notify
             )
             return False
@@ -1134,7 +1193,7 @@ class ValidatorRestarterRsnScript:
             os.unlink(restart_script)
         self._log_info(f"Subnet '{self._netuid}' successfully restarted.")
         self._send_monitor_notification(
-            f"{script_name}: Successfully restarted on subnet {self._netuid} - {description}",
+            f"{SCRIPT_NAME}: Successfully restarted on subnet {self._netuid} - {description}",
             force_notify
         )
 
@@ -1145,21 +1204,7 @@ class ValidatorRestarterRsnScript:
             self._log_info("Not sending discord monitor notification.")
             return
 
-        payload = json.dumps({"content": message})
-        monitor_cmd = [
-            "curl", "-H", "Content-Type: application/json",
-            "-d", payload, self._discord_monitor_url
-        ]
-        monitor_cmd_str = " ".join(monitor_cmd)
-        self._log_info(f"Running command: '{monitor_cmd_str}'")
-        try:
-            subprocess.run(monitor_cmd, check=True)
-        except subprocess.CalledProcessError as exc:
-            self._log_error("Failed to send discord monitor notification.")
-            self._log_error(
-                f"'{monitor_cmd_str}' command failed with error {exc}")
-        else:
-            self._log_info("Discord monitor notification successfully sent.")
+        send_monitor_notification(message)
 
 
 PM2_LOGS_VALIDATORS_DICT = {
@@ -1227,9 +1272,8 @@ def main(options):
         options.do_check_stopped_logs = False
 
     sleep_time = 15
-    script_name =  os.path.basename(__file__)
     bittensor.logging.info("")
-    bittensor.logging.info(f"Starting {script_name} on subnet {options.netuid}")
+    bittensor.logging.info(f"Starting {SCRIPT_NAME} on subnet {options.netuid}")
     bittensor.logging.info(f"Sleeping {sleep_time} seconds in case the "
                             "validator process is just starting.")
     bittensor.logging.info("")
