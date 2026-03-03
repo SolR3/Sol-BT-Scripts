@@ -97,10 +97,8 @@ def get_uids(diff_a, diff_b, metagraph):
     return uid_a, uid_b
 
 
-def main():
+def main(args):
     import bittensor
-
-    args = parse_args()
 
     with bittensor.Subtensor() as subtensor:
         owner_hotkey = subtensor.get_subnet_owner_hotkey(args.netuid)
@@ -115,4 +113,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args)

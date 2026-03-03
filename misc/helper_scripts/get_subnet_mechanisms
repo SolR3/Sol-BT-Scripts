@@ -18,10 +18,8 @@ def parse_args():
     return parser.parse_args()
 
 
-async def main():
+async def main(args):
     import bittensor
-
-    args = parse_args()
 
     print("")
     print("Subnets with multiple mechanisms")
@@ -61,4 +59,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    args = parse_args()
+    asyncio.run(main(args))
