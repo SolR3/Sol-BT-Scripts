@@ -43,12 +43,13 @@ def parse_args():
 
 
 def print_weights(owner_hotkey, owner_uid, threshold, metagraph, verbose):
-    print(f"\nOwner:\n==========\n{owner_uid} - {owner_hotkey}\n\n")
+    owner_coldkey = metagraph.coldkeys[owner_uid]
 
+    print(f"\nOwner:\n==========\n{owner_uid} - {owner_hotkey}\n\n")
     print("Weights:\n==========")
     for uid in range(metagraph.num_uids):
         if metagraph.validator_permit[uid]:
-            if uid == owner_uid:
+            if uid == owner_uid or metagraph.coldkeys[uid] == owner_coldkey:
                 name = "Owner"
             else:
                 coldkey = metagraph.coldkeys[uid]
