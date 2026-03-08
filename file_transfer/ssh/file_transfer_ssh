@@ -60,14 +60,14 @@ def parse_args():
         dest="direction",
         action="store_const",
         const=Direction.SEND,
-        help="Transfer the file from the source to the destination.")
+        help="Transfer the file from this host to the destination host.")
     
     direction_group.add_argument(
         "--receive",
         dest="direction",
         action="store_const",
         const=Direction.RECEIVE,
-        help="Transfer the file from the destination to the source.")
+        help="Transfer the file from the destination host to this host.")
 
     return parser.parse_args()
 
