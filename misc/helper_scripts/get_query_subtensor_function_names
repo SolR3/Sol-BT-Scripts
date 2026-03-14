@@ -22,4 +22,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt as exc:
+        import traceback
+        exc_list = traceback.format_exception_only(exc)
+        exc_text = "\n" + "".join(exc_list).strip("\n")
+        print(exc_text)

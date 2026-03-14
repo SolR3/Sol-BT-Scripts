@@ -122,5 +122,11 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    try:
+        args = parse_args()
+        main(args)
+    except KeyboardInterrupt as exc:
+        import traceback
+        exc_list = traceback.format_exception_only(exc)
+        exc_text = "\n" + "".join(exc_list).strip("\n")
+        print(exc_text)
