@@ -2,6 +2,7 @@
 
 import argparse
 from enum import auto
+import getpass
 import os
 import paramiko
 import stat
@@ -46,11 +47,8 @@ def parse_args():
 
     auth_group.add_argument(
         "--ssh-key",
-        help="The ssh key to use for authenticating.")
-
-    auth_group.add_argument(
-        "--password",
-        help="The password for authenticating the ssh user.")
+        help="The ssh key to use for authenticating. "
+             "If not specified then a password will be required.")
 
     parser.add_argument(
         "--source",
@@ -137,6 +135,7 @@ def receive_files(session, source, dest):
         #     source_stat = session.stat(source_path)
         #     if stat.S_ISREG(source_stat.st_mode):
         #         source_files.append(source_path)
+        # session.mkdir(path, mode=511)
     else:
         # This is a file.
         source_paths = [source]
@@ -157,7 +156,8 @@ def do_transfer(options):
         ssh_key = paramiko.RSAKey.from_private_key_file(options.ssh_key)
         auth_arg = {"pkey": ssh_key}
     else:
-        auth_arg = {"password": options.password}
+        password = getpass.getpass(f"Enter password for {options.user}: ")
+        auth_arg = {"password": password}
 
     client.connect(
         options.host,
