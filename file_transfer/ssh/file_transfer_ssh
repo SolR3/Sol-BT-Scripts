@@ -42,10 +42,8 @@ def parse_args():
         "--user",
         required=True,
         help="The ssh user name to authenticate with.")
-    
-    auth_group = parser.add_mutually_exclusive_group(required=True)
 
-    auth_group.add_argument(
+    parser.add_argument(
         "--ssh-key",
         help="The ssh key to use for authenticating. "
              "If not specified then a password will be required.")
