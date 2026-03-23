@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from abc import ABC, abstractmethod
 import argparse
 from enum import auto
 import getpass
@@ -49,9 +50,10 @@ def parse_args():
              "If not specified then a password will be required.")
 
     parser.add_argument(
-        "--source",
+        "--sources",
+        nargs="+",
         required=True,
-        help="The source file or folder.")
+        help="The source file(s) or folder(s).")
     
     parser.add_argument(
         "--dest",
@@ -77,108 +79,168 @@ def parse_args():
     return parser.parse_args()
 
 
-def send_files(session, source, dest):
-    if not os.path.exists(source):
-        print(f"ERROR: Source path {source} does not exist.")
-        return
+class FileTransferBase(ABC):
+    _SOURCE = None
+    _DEST = None
 
-    if os.path.isdir(source):
-        print(f"ERROR: Source path {source} is a directory. "
-              "Transfering a directory is not yet implemented.")
-        return
-        # TODO - Recursively gather all files to transfer.
-        # source_files = []
-    else:
-        # This is a file.
-        source_paths = [source]
+    def __init__(self, options):
+        self._sources = [os.path.normpath(s) for s in options.sources]
+        self._dest = os.path.normpath(options.dest)
 
-    try:
-        dest_stat = session.stat(dest)
-    except FileNotFoundError:
-        print(f"ERROR: Destination path {dest} does not exist.")
-        return
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-    if not stat.S_ISDIR(dest_stat.st_mode):
-        print(f"ERROR: Destination path {dest} is not a directory.")
-        return
+        if options.ssh_key:
+            ssh_key = paramiko.RSAKey.from_private_key_file(options.ssh_key)
+            auth_arg = {"pkey": ssh_key}
+        else:
+            password = getpass.getpass(f"Enter password for {options.user}: ")
+            auth_arg = {"password": password}
 
-    for source_path in source_paths:
-        source_mode = os.stat(source_path).st_mode
-        dest_path = os.path.join(dest, os.path.basename(source_path))
-        print(f"\nCopying local file: {source_path}\nTo remote file: {dest_path}")
-        session.put(source_path, dest_path)
-        session.chmod(dest_path, source_mode)
+        client.connect(
+            options.host,
+            port=options.port,
+            username=options.user,
+            **auth_arg)
 
-
-def receive_files(session, source, dest):
-    if not os.path.isdir(dest):
-        print(f"ERROR: Destination path {dest} does not exist as a directory.")
-        return
-
-    try:
-        source_stat = session.stat(source)
-    except FileNotFoundError:
-        print(f"ERROR: Source path {source} does not exist.")
-        return
-
-    if stat.S_ISDIR(source_stat.st_mode):
-        # This is a directory. For now just return with an error.
-        print(f"ERROR: Source path {source} is a directory. "
-              "Transfering a directory is not yet implemented.")
-        return
-        # TODO - Recursively gather all files to transfer.
-        # source_files = []
-        # for source_file in session.listdir(source):
-        #     source_path = os.path.join(source, source_file)
-        #     source_stat = session.stat(source_path)
-        #     if stat.S_ISREG(source_stat.st_mode):
-        #         source_files.append(source_path)
-        # session.mkdir(path, mode=511)
-    else:
-        # This is a file.
-        source_paths = [source]
-
-    for source_path in source_paths:
-        source_mode = session.stat(source_path).st_mode
-        dest_path = os.path.join(dest, os.path.basename(source_path))
-        print(f"\nCopying remote file: {source_path}\nTo local file: {dest_path}")
-        session.get(source_path, dest_path)
-        os.chmod(dest_path, source_mode)
-
-
-def do_transfer(options):
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-    if options.ssh_key:
-        ssh_key = paramiko.RSAKey.from_private_key_file(options.ssh_key)
-        auth_arg = {"pkey": ssh_key}
-    else:
-        password = getpass.getpass(f"Enter password for {options.user}: ")
-        auth_arg = {"password": password}
-
-    client.connect(
-        options.host,
-        port=options.port,
-        username=options.user,
-        **auth_arg)
-    
-    try:
-        session = client.open_sftp()
         try:
-            if options.direction == Direction.SEND:
-                send_files(session, options.source, options.dest)
-            else:  # options.direction == Direction.RECEIVE
-                receive_files(session, options.source, options.dest)
+            self._session = client.open_sftp()
+            try:
+                self._do_transfer()
+            finally:
+                self._session.close()
         finally:
-            session.close()
-    finally:
-        client.close()
+            client.close()
+
+    def _do_transfer(self):
+        source_dir_paths = []
+        source_file_paths = []
+
+        self._set_transfer_functions()
+
+        if not os.path.isabs(self._dest):
+            print(f"ERROR: Destination path {self._dest} must be an absolute path.")
+            return
+
+        try:
+            dest_stat = self._stat_dest(self._dest)
+        except FileNotFoundError:
+            print(f"ERROR: Destination path {self._dest} does not exist.")
+            return
+
+        if not stat.S_ISDIR(dest_stat.st_mode):
+            print(f"ERROR: Destination path {self._dest} is not a directory.")
+            return
+
+        for source in self._sources:
+            if not os.path.isabs(source):
+                print(f"ERROR: Source path {source} must be an absolute path.")
+                return
+
+            try:
+                source_stat_mode = self._stat_source(source).st_mode
+            except FileNotFoundError:
+                print(f"ERROR: Source path {source} does not exist.")
+                return
+
+            if stat.S_ISREG(source_stat_mode):
+                # This is a file.
+                # Each element in source_dir_paths and source_file_paths
+                # is a tuple of (path, st_mode)
+                source_file_paths.append((
+                    os.path.dirname(source),
+                    os.path.basename(source),
+                    source_stat_mode
+                ))
+
+            elif stat.S_ISDIR(source_stat_mode):
+                source_base_dir = os.path.dirname(source)
+                for dirpath, _, filenames in self._walk(source):
+                    source_dir_paths.append((
+                        os.path.relpath(dirpath, source_base_dir),
+                        self._stat_source(dirpath).st_mode
+                    ))
+                    for filename in filenames:
+                        filepath = os.path.join(dirpath, filename)
+                        source_file_paths.append((
+                            source_base_dir,
+                            os.path.relpath(filepath, source_base_dir),
+                            self._stat_source(filepath).st_mode
+                        ))
+
+            else:
+                print(f"ERROR: Source path {source} is not a regular file or directory.")
+                return
+
+        # The source_dir_paths lists intermediate directories first.
+        for (relative_source_dir_path, dir_mode) in source_dir_paths:
+            dest_dir_path = os.path.join(self._dest, relative_source_dir_path)
+            print(f"\nMaking {self._DEST} directory: {dest_dir_path}")
+            self._mkdir(dest_dir_path, mode=dir_mode)
+
+        for source_base_dir, relative_source_file_path, file_mode in source_file_paths:
+            source_file_path = os.path.join(source_base_dir, relative_source_file_path)
+            dest_file_path = os.path.join(self._dest, relative_source_file_path)
+            print(f"\nCopying {self._SOURCE} file: {source_file_path}\nTo {self._DEST} file: {dest_file_path}")
+            self._transfer(source_file_path, dest_file_path)
+            self._chmod(dest_file_path, file_mode)
+
+        print("")
+
+    @abstractmethod
+    def _set_transfer_functions(self):
+        pass
+
+
+class FileTransferSend(FileTransferBase):
+    _SOURCE = "local"
+    _DEST = "remote"
+
+    def _set_transfer_functions(self):
+        self._chmod = self._session.chmod
+        self._mkdir = self._session.mkdir
+        self._stat_dest = self._session.lstat
+        self._stat_source = os.lstat
+        self._transfer = self._session.put
+        self._walk = os.walk
+
+
+class FileTransferReceive(FileTransferBase):
+    _SOURCE = "remote"
+    _DEST = "local"
+
+    def _set_transfer_functions(self):
+        self._chmod = os.chmod
+        self._mkdir = os.mkdir
+        self._stat_dest = os.lstat
+        self._stat_source = self._session.lstat
+        self._transfer = self._session.get
+        self._walk = self._walk_remote
+
+    def _walk_remote(self, toppath):
+        dirnames = []
+        filenames = []
+        for elem in self._session.listdir(toppath):
+            elem_stat_mode = self._session.stat(
+                os.path.join(toppath, elem)).st_mode
+            if stat.S_ISDIR(elem_stat_mode):
+                dirnames.append(elem)
+            elif stat.S_ISREG(elem_stat_mode):
+                filenames.append(elem)
+        
+        yield (toppath, dirnames, filenames)
+
+        for dirname in dirnames:
+            dirpath = os.path.join(toppath, dirname)
+            yield from self._walk_remote(dirpath)
 
 
 def main():
     options = parse_args()
-    do_transfer(options)
+    if options.direction == Direction.SEND:
+        FileTransferSend(options)
+    else:  # options.direction == Direction.RECEIVE
+        FileTransferReceive(options)
 
 
 if __name__ == "__main__":
