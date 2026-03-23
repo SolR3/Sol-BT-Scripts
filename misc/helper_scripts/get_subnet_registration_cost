@@ -16,6 +16,7 @@ def parse_args():
 def main(args):
     import bittensor
 
+    # cost = bittensor.Subtensor().get_subnet_info(args.netuid).burn
     cost = bittensor.Subtensor().recycle(args.netuid)
     print(f"\nRegistration cost for subnet {args.netuid} = {cost.unit}{cost.tao}\n")
 
