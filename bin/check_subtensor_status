@@ -2,7 +2,7 @@
 
 # standard imports
 import argparse
-from collections import namedtuple
+from dataclasses import dataclass, asdict
 import json
 import multiprocessing
 import os
@@ -24,9 +24,14 @@ LOCAL_SUBTENSORS = [
 ]
 FINNEY_INTERVAL = 120  # In minutes
 
-SubtensorData = namedtuple("SubtensorData", ["name", "block_diff", "error"])
-
 mp_queue = multiprocessing.Queue()
+
+
+@dataclass
+class SubtensorData:
+    name: str
+    block_diff: int | None
+    error: str | None
 
 
 def _parse_args():
@@ -93,9 +98,7 @@ def write_json_file(subtensor_data, json_folder):
     # Get a serializable version of the data
     subtensor_json_data = []
     for subtensor in subtensor_data:
-        subtensor_json_data.append(dict(
-            [(f, getattr(subtensor, f)) for f in subtensor._fields]
-        ))
+        subtensor_json_data.append(asdict(subtensor))
 
     # First remove all existing json files
     for file_name in os.listdir(json_folder):
