@@ -28,6 +28,8 @@ DISCORD_MONITOR_URL = (
     "https://discord.com/api/webhooks/1328849265765777468/"
     "yJg07DYWLJyiFZgZPaLGTmFEwiAu2JWW5osyjFVoqlMWT66JBbV9_FOcslvDdtibtcR0"
 )
+RED_X = "\u274C"
+RED_QM = "\u2753"
 
 # Debugging
 DEBUG = False
@@ -927,7 +929,7 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
                     do_restart |= self._check_code_repo(git_command)
                 except GitUpdateError:
                     send_monitor_notification(
-                        f"{SCRIPT_NAME}: Failed to update git repo on subnet {self._netuid}"
+                        f"{SCRIPT_NAME}: {RED_X} Failed to update git repo on subnet {self._netuid}"
                     )
 
             if do_restart:
@@ -1184,7 +1186,7 @@ class ValidatorRestarterRsnScript:
             self._log_error(
                 f"'{restart_cmd_str}' command failed with error: {exc}")
             self._send_monitor_notification(
-                f"{SCRIPT_NAME}: Failed to restart subnet {self._netuid} - {description}",
+                f"{SCRIPT_NAME}: {RED_QM} Possibly failed to restart subnet {self._netuid} - {description}",
                 force_notify
             )
             return False
