@@ -89,7 +89,7 @@ def write_timestamp(json_folder):
         "actual_time": int(max_file_time),
     }
     timestamp_file = os.path.join(json_folder, TIMESTAMP_FILE_NAME)
-    print(f"\nWriting timestamp file: {timestamp_file}")
+    bittensor.logging.info(f"Writing timestamp file: {timestamp_file}")
     with open(timestamp_file, "w") as fd:
             json.dump(timestamp, fd)
 
@@ -108,12 +108,12 @@ def write_json_file(subtensor_data, json_folder):
             or os.path.splitext(json_file)[1] != ".json"
         ):
             continue
-        print(f"Removing {json_file}")
+        bittensor.logging.info(f"Removing {json_file}")
         os.unlink(json_file)
 
     # Then write the new data json file
     json_file = os.path.join(json_folder, JSON_FILE_NAME)
-    print(f"\nWriting data to file: {json_file}")
+    bittensor.logging.info(f"\nWriting data to file: {json_file}")
     with open(json_file, "w") as fd:
         json.dump(subtensor_json_data, fd, indent=4)
 
@@ -156,6 +156,7 @@ def print_subtensor_statuses(subtensor_data):
             style=text_style
         )
 
+    text.append("\n")
     console.print(text)
 
 
@@ -180,26 +181,27 @@ def run_in_subprocess(network):
 
 
 def main(options):
+    bittensor.logging.enable_info()
     minutes_until_get_finney_block = 0
     interval_seconds = round(options.interval * 60)
 
     while True:
-        print("\nGetting subtensor statuses.")
+        bittensor.logging.info("Getting subtensor statuses.")
         start_time = time.time()
         subtensor_data = []
 
         if minutes_until_get_finney_block <= 0:
-            print("Getting finney block.")
+            bittensor.logging.info("Getting finney block.")
             result = run_in_subprocess("finney")
             try:
                 finney_block = int(result)
             except ValueError:
                 finney_block = None
-                print("\nERROR: Failed to get finney block.")
-                print(result)
+                bittensor.logging.error("Failed to get finney block.")
+                bittensor.logging.error(result)
             minutes_until_get_finney_block = FINNEY_INTERVAL
         else:
-            print(
+            bittensor.logging.info(
                 "Not getting finney block. "
                 f"{minutes_until_get_finney_block} minutes left."
             )
@@ -207,7 +209,7 @@ def main(options):
         delay_start = time.time()
         for subtensor_name in LOCAL_SUBTENSORS:
             network = subtensor_name.split(maxsplit=1)[0]
-            print(f"Getting block for {network}")
+            bittensor.logging.info(f"Getting block for {network}")
             result = run_in_subprocess(network)
             try:
                 block = int(result)
@@ -233,7 +235,6 @@ def main(options):
                 )
             )
 
-        print("")
         if options.json_folder:
             write_json_file(subtensor_data, options.json_folder)
         else:
@@ -241,7 +242,7 @@ def main(options):
 
         total_seconds = round(time.time() - start_time)
         total_time_formatted = format_time(total_seconds)
-        print(f"\nSubnet data gathering took {total_time_formatted}.\n")
+        bittensor.logging.info(f"Subnet data gathering took {total_time_formatted}.\n")
 
         # Only gather the data once.
         if not interval_seconds:
@@ -250,10 +251,10 @@ def main(options):
         wait_seconds = interval_seconds - total_seconds
         if wait_seconds > 0:
             wait_time_formatted = format_time(wait_seconds)
-            print(f"Waiting {wait_time_formatted}.")
+            bittensor.logging.info(f"Waiting {wait_time_formatted}.")
             time.sleep(wait_seconds)
         else:
-            print(
+            bittensor.logging.warning(
                 f"Processing took {total_seconds} seconds which is longer "
                 f"than {interval_seconds} seconds. Not waiting."
             )
