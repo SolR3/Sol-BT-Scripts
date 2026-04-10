@@ -50,25 +50,24 @@ def print_weights(owner_hotkey, owner_uid, threshold, metagraph, verbose):
 
     text.append(f"\nOwner:\n==========\n{owner_uid} - {owner_hotkey}\n\n\n")
     text.append("Weights:\n==========\n")
-    for uid in range(metagraph.num_uids):
-        if metagraph.validator_permit[uid]:
-            if uid == owner_uid or metagraph.coldkeys[uid] == owner_coldkey:
-                name = "Owner"
-            else:
-                coldkey = metagraph.coldkeys[uid]
-                name = KNOWN_COLDKEYS.get(coldkey)
+    for uid in metagraph.uids[metagraph.validator_permit]:
+        if uid == owner_uid or metagraph.coldkeys[uid] == owner_coldkey:
+            name = "Owner"
+        else:
+            coldkey = metagraph.coldkeys[uid]
+            name = KNOWN_COLDKEYS.get(coldkey)
 
-            vtrust = metagraph.Tv[uid]
-            updated = metagraph.block - metagraph.last_update[uid]
-            weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > threshold]
+        vtrust = metagraph.Tv[uid]
+        updated = metagraph.block - metagraph.last_update[uid]
+        weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > threshold]
 
-            if name:
-                color = 10 if name == "Rizzo" else 14 if name == "Owner" else 12
-                text.append(f"{name}:\n", style=f"color({color})")
-            text.append(f"{uid} - {metagraph.hotkeys[uid]} (Weights: {len(weights)}  vT: {vtrust:.3f}  U: {updated})\n")
-            if verbose:
-                text.append(str(weights) + "\n")
-            text.append("\n")
+        if name:
+            color = 10 if name == "Rizzo" else 14 if name == "Owner" else 12
+            text.append(f"{name}:\n", style=f"color({color})")
+        text.append(f"{uid} - {metagraph.hotkeys[uid]} (Weights: {len(weights)}  vT: {vtrust:.3f}  U: {updated})\n")
+        if verbose:
+            text.append(str(weights) + "\n")
+        text.append("\n")
 
     Console().print(text)
 
