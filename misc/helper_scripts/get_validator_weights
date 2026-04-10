@@ -5,7 +5,6 @@ from rich.text import Text
 from rich.console import Console
 
 
-OUR_VALI = "Rizzo"
 KNOWN_COLDKEYS = {
     "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo": "Rizzo",
     "5DywxdtESjskgPZrDXL86qV44SpPgJuqs9X6noyJJwX9PaSD": "Rt21",
@@ -64,7 +63,7 @@ def print_weights(owner_hotkey, owner_uid, threshold, metagraph, verbose):
             weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > threshold]
 
             if name:
-                color = 14 if name == OUR_VALI else 12
+                color = 10 if name == "Rizzo" else 14 if name == "Owner" else 12
                 text.append(f"{name}:\n", style=f"color({color})")
             text.append(f"{uid} - {metagraph.hotkeys[uid]} (Weights: {len(weights)}  vT: {vtrust:.3f}  U: {updated})\n")
             if verbose:
