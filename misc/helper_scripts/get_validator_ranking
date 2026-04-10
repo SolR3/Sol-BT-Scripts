@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+
+# Reference docs for calculating alpha price
+# https://docs.taostats.io/docs/alpha-emission
+# https://docs.taostats.io/docs/subnet-pools
+
+# Standard imports
+import argparse
+import asyncio
+from dataclasses import dataclass, field
+from rich.text import Text
+from rich.console import Console
+
+
+KNOWN_COLDKEYS = {
+    "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo": "Rizzo",
+    "5DywxdtESjskgPZrDXL86qV44SpPgJuqs9X6noyJJwX9PaSD": "Rt21",
+    "5EBuUXD6eXSSWVaT1NqaUQoAACUkAmEogzAfPQvDXTEQZ8Ff": "OTF",
+    "5E9fVY1jexCNVMjd2rdBsAxeamFGEMfzHcyTn2fHgdHeYc5p": "Yuma",
+    "5FHxxe8ZKYaNmGcSLdG5ekxXeZDhQnk9cbpHdsJW8RunGpSs": "Kraken",
+    "5CWzmvA17MAMQ9mnAecLxFXS2N8846rz6T7m4QNHyVtJVq4j": "TAO.com",
+    "5CqsgERpW6dJn4AtTkfckcUd7Ab6JNVa2Hb2MhyjApYVXMUV": "MUV",
+}
+
+
+@dataclass
+class StakeData:
+    @dataclass
+    class AlphaTuple:
+        stake: float
+        price: float
+
+    stake_in_alpha: dict = field(default_factory=dict)
+    stake_in_tao: float = 0.0
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--top",
+        type=int,
+        help="Only display the top validators up to this number. For example, "
+             "--top 50 shows only the top 50 validators.")
+
+    return parser.parse_args()
+
+
+async def get_metagraphs():
+    import bittensor
+
+    async with bittensor.AsyncSubtensor() as subtensor:
+        # Get all subnets
+        netuids = await subtensor.get_all_subnets_netuid()
+        netuids = netuids[1:]
+
+        # Get the block to pass to async calls so everything is in sync
+        block = await subtensor.block
+
+        # Get the metagraph for each netuid
+        metagraphs = await asyncio.gather(
+            *[
+                subtensor.metagraph(netuid=netuid, block=block)
+                for netuid in netuids
+            ]
+        )
+
+    return metagraphs
+
+
+def update_validators_stake(validators_stake, metagraph):
+    # See reference docs above for how alpha price (in tao) is calculated.
+    # metagraph.pool.moving_price - This isn't quite 100% accurate, it seems.
+    # Using the below calculation instead.
+    alpha_price = metagraph.pool.tao_in / metagraph.pool.alpha_in
+    for uid in metagraph.uids[metagraph.validator_permit]:
+        stake_in_alpha = float(metagraph.total_stake[uid])
+        stake_in_tao = stake_in_alpha * alpha_price
+
+        stake_data = validators_stake.setdefault(metagraph.coldkeys[uid], StakeData())
+        stake_data.stake_in_alpha[metagraph.netuid] = \
+            StakeData.AlphaTuple(stake=stake_in_alpha, price=alpha_price)
+        stake_data.stake_in_tao += stake_in_tao
+
+
+def print_stake_rankings(validators_stake, num_total):
+    def get_tao_stake(coldkey):
+        return validators_stake[coldkey].stake_in_tao
+
+    text = Text()
+
+    for rank, coldkey in enumerate(reversed(sorted(validators_stake, key=get_tao_stake)), 1):
+        if rank > num_total:
+            break
+
+        text.append(f"{rank:<2} - ")
+        if coldkey in KNOWN_COLDKEYS:
+            name = KNOWN_COLDKEYS[coldkey]
+            color = 10 if name == "Rizzo" else 12
+            style = f"color({color})"
+            # text.append(f"{name:<15}", style=f"color({color})")
+        else:
+            name = coldkey[:6] + "..." + coldkey[-6:]
+            style = None
+            # text.append(f"{name:<15}")
+        text.append(f"{name:<15}", style=style)
+
+        stake_data = validators_stake[coldkey]
+        text.append("  --  ")
+        text.append(f"{stake_data.stake_in_tao:.3f}\n", style=style)
+
+    Console().print(text)
+
+
+async def main(args):
+    metagraphs = await get_metagraphs()
+
+    validators_stake = {}
+    for metagraph in metagraphs:
+        update_validators_stake(validators_stake, metagraph)
+
+    num_total = args.top or len(validators_stake)
+    print_stake_rankings(validators_stake, num_total)
+
+
+if __name__ == "__main__":
+    try:
+        args = parse_args()
+        asyncio.run(main(args))
+    except KeyboardInterrupt as exc:
+        import traceback
+        exc_list = traceback.format_exception_only(exc)
+        exc_text = "\n" + "".join(exc_list).strip("\n")
+        print(exc_text)
