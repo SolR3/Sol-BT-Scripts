@@ -44,14 +44,13 @@ def parse_args():
     return parser.parse_args()
 
 
-def print_weights(owner_hotkey, owner_uid, threshold, metagraph, verbose):
+def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold, metagraph, verbose):
     text = Text()
-    owner_coldkey = metagraph.coldkeys[owner_uid]
 
     text.append(f"\nOwner:\n==========\n{owner_uid} - {owner_hotkey}\n\n\n")
     text.append("Weights:\n==========\n")
     for uid in metagraph.uids[metagraph.validator_permit]:
-        if uid == owner_uid or metagraph.coldkeys[uid] == owner_coldkey:
+        if metagraph.coldkeys[uid] in owner_coldkeys:
             name = "Owner"
         else:
             coldkey = metagraph.coldkeys[uid]
@@ -111,19 +110,48 @@ def get_uids(diff_a, diff_b, metagraph):
     return uid_a, uid_b
 
 
+def get_owner(subnet, metagraph):
+    owner_hotkey = subnet.owner_hotkey
+    owner_coldkey = subnet.owner_coldkey
+
+    if owner_hotkey in metagraph.hotkeys:
+        owner_uid = metagraph.hotkeys.index(owner_hotkey)
+        owner_coldkeys = set([owner_coldkey, metagraph.coldkeys[owner_uid]])
+
+    elif owner_coldkey in metagraph.coldkeys:
+        # Should only happen for subnet 104
+        Console().print(Text(
+            f"WARNING: Owner hotkey {owner_hotkey} is not in the metagraph.",
+            style="color(11)"))
+        owner_uid = metagraph.coldkeys.index(owner_coldkey)
+        owner_hotkey = metagraph.hotkeys[owner_uid]
+        owner_coldkeys = set([owner_coldkey])
+
+    else:
+        # Should never happen
+        Console().print(Text(
+            f"ERROR: Owner hotkey {owner_hotkey} and owner coldkey {owner_coldkey} are not in the metagraph.",
+            style="color(9)"))
+        owner_uid = None
+        owner_hotkey = None
+        owner_coldkeys = set()
+
+    return owner_uid, owner_hotkey, owner_coldkeys
+
+
 def main(args):
     import bittensor
 
     with bittensor.Subtensor() as subtensor:
-        owner_hotkey = subtensor.get_subnet_owner_hotkey(args.netuid)
-        owner_uid = subtensor.get_uid_for_hotkey_on_subnet(owner_hotkey, args.netuid)
+        subnet = subtensor.subnet(args.netuid)
         metagraph = subtensor.metagraph(args.netuid, lite=False)
 
     if args.diff:
         uids = get_uids(*args.diff, metagraph)
         print_weight_diffs(*uids, args.threshold, metagraph, args.verbose)
     else:
-        print_weights(owner_hotkey, owner_uid, args.threshold, metagraph, args.verbose)
+        owner_uid, owner_hotkey, owner_coldkeys = get_owner(subnet, metagraph)
+        print_weights(owner_uid, owner_hotkey, owner_coldkeys, args.threshold, metagraph, args.verbose)
 
 
 if __name__ == "__main__":
