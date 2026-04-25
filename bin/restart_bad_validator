@@ -31,6 +31,7 @@ DISCORD_MONITOR_URL = (
 )
 RED_X = "\u274C"
 RED_QM = "\u2753"
+RESTARTER_PREFIX = "RESTARTER"
 
 # Debugging
 DEBUG = False
@@ -169,10 +170,20 @@ def parse_args():
         help="When specified, this will skip sending the notification to the "
              "discord monitor channel.")
 
+    parser.add_argument(
+        "--skip-restarter-code-check",
+        action="store_false",
+        dest="do_check_restarter_code",
+        help="When specified, this will do the checking for git code updates. "
+             "Note: Unlike most of the other checks, this one is opt-in "
+             "rather than opt-out. WARNING: This check currentl requires that the "
+             "restarter be run from the base git repo folder.")
+
     return parser.parse_args()
 
 
 error_logs_wait_timer = None
+restart_lock = threading.Lock()
 
 
 class GitUpdateError(Exception):
@@ -197,7 +208,7 @@ def get_metagraph_data(network, netuid, mp_queue_name):
         mp_queue.put(metagraph_data)
 
 
-def send_monitor_notification(message):
+def send_monitor_notification(log_prefix, message):
     payload = json.dumps({"content": message})
     monitor_cmd = [
         "curl", "-H", "Content-Type: application/json",
@@ -205,16 +216,15 @@ def send_monitor_notification(message):
     ]
 
     monitor_cmd_str = shlex.join(monitor_cmd)
-    bittensor.logging.info(f"Running command: '{monitor_cmd_str}'")
+    bittensor.logging.info(f"{log_prefix}: Running command: '{monitor_cmd_str}'")
 
     try:
         subprocess.run(monitor_cmd, check=True)
     except subprocess.CalledProcessError as exc:
-        bittensor.logging.error("Failed to send discord monitor notification.")
-        bittensor.logging.error(
-            f"'{monitor_cmd_str}' command failed with error {exc}")
+        bittensor.logging.error(f"{log_prefix}: Failed to send discord monitor notification.")
+        bittensor.logging.error(f"{log_prefix}: '{monitor_cmd_str}' command failed with error {exc}")
     else:
-        bittensor.logging.info("Discord monitor notification successfully sent.")
+        bittensor.logging.info(f"{log_prefix}: Discord monitor notification successfully sent.")
 
 
 class ValidatorChecker:
@@ -1007,6 +1017,7 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
                     do_restart |= self._check_code_repo(git_command)
                 except GitUpdateError:
                     send_monitor_notification(
+                        self.log_prefix,
                         f"{SCRIPT_NAME}: {RED_X} Failed to update git repo on subnet {self._netuid}"
                     )
 
@@ -1227,10 +1238,18 @@ class ValidatorRestarterRsnScript:
         bittensor.logging.error(f"{self._checker_obj.log_prefix}: {message}")
 
     def do_restart(self, description, force_notify=False):
-        # TODO: acquire threading lock
-        if error_logs_wait_timer:
-            error_logs_wait_timer.start_wait_timer()
-        self._do_restart(description, force_notify)
+        # If the restart_lock is currently acquired then another thread is
+        # currently running a restart so just return.
+        # Otherwise aquire the restart_lock and run a restart.
+        if restart_lock.locked():
+            self._log_info(f"Subnet {self._netuid} is currently restarting. "
+                           f"Skipping retart for: {description}.")
+            return
+
+        with restart_lock:
+            if error_logs_wait_timer:
+                error_logs_wait_timer.start_wait_timer()
+            self._do_restart(description, force_notify)
 
     def _do_restart(self, description, force_notify):
         self._log_info(f"Restarting subnet {self._netuid}: {description}.")
@@ -1268,9 +1287,10 @@ class ValidatorRestarterRsnScript:
                 force_notify
             )
             return False
+        finally:
+            if restart_script:
+                os.unlink(restart_script)
 
-        if restart_script:
-            os.unlink(restart_script)
         self._log_info(f"Subnet '{self._netuid}' successfully restarted.")
         self._send_monitor_notification(
             f"{SCRIPT_NAME}: Successfully restarted on subnet {self._netuid} - {description}",
@@ -1284,7 +1304,7 @@ class ValidatorRestarterRsnScript:
             self._log_info("Not sending discord monitor notification.")
             return
 
-        send_monitor_notification(message)
+        send_monitor_notification(self._checker_obj.log_prefix, message)
 
 
 PM2_LOGS_VALIDATORS_DICT = {
@@ -1327,6 +1347,18 @@ DOCKER_LOGS_VALIDATORS_DICT = {
 GIT_TAG_VALIDATORS = [2, 42, 50, 81]
 
 
+def log_info(message):
+    bittensor.logging.info(f"{RESTARTER_PREFIX}: {message}")
+
+
+def log_warning(message):
+    bittensor.logging.warning(f"{RESTARTER_PREFIX}: {message}")
+
+
+def log_error(message):
+    bittensor.logging.error(f"{RESTARTER_PREFIX}: {message}")
+
+
 @dataclass
 class RestartChecker:
     descriptor: str
@@ -1336,6 +1368,86 @@ class RestartChecker:
 
 def _run_checker(checker_class, options):
     checker_class(options)
+
+
+def check_for_restarter_code_update(netuid):
+
+    def send_error(message):
+        log_error(message)
+        log_error("Not checking for restarter code updates.")
+        send_monitor_notification(
+            RESTARTER_PREFIX,
+            f"{SCRIPT_NAME}: {RED_X} Failed to update restarter git repo on subnet {netuid}"
+        )
+
+    script_dir = os.path.dirname(__file__)
+    repo_cmd = f"git -C {script_dir} rev-parse --show-toplevel"
+    try:
+        process = subprocess.run(shlex.split(repo_cmd), check=True, stdout=subprocess.PIPE)
+    except subprocess.CalledProcessError as exc:
+        # Should never ever get here
+        send_error(f"Could not find restarter git repo from path '{script_dir}': {exc}")
+        return
+
+    repo_path = process.stdout.decode().strip()
+
+    while True:
+        log_info("Checking for restarter code updates.")
+
+        # Get current commit
+        get_cmd = f"git -C {repo_path} rev-parse HEAD"
+        try:
+            process = subprocess.run(shlex.split(get_cmd), check=True, stdout=subprocess.PIPE)
+        except subprocess.CalledProcessError as exc:
+            send_error(f"'{get_cmd}' command failed: {exc}")
+            return
+
+        current_commit = process.stdout.decode().strip()
+
+        # Run git pull
+        pull_cmd = f"git -C {repo_path} pull --autostash"
+        try:
+            subprocess.run(shlex.split(pull_cmd), check=True)
+        except subprocess.CalledProcessError as exc:
+            send_error(f"'{pull_cmd}' command failed: {exc}")
+            return
+
+        # Get new commit
+        try:
+            process = subprocess.run(shlex.split(get_cmd), check=True, stdout=subprocess.PIPE)
+        except subprocess.CalledProcessError as exc:
+            send_error(f"'{get_cmd}' command failed: {exc}")
+            return
+
+        new_commit = process.stdout.decode().strip()
+
+        log_info(f"Current commit: {current_commit}")
+        log_info(f"New commit: {new_commit}")
+        if current_commit != new_commit:
+            log_info("Commits changed.")
+            script_path = os.path.relpath(__file__, repo_path)
+            diff_cmd = f"git -C {repo_path} diff --quiet {current_commit} {new_commit} -- {script_path}"
+            if subprocess.run(shlex.split(diff_cmd)).returncode:
+                log_info(f"{__file__} changed. Exiting process. If this is running in pm2 "
+                         "it should cause a pm2 restart and run the updated code.")
+                with restart_lock:
+                    # Sleeping for a second to make sure all logs are output before restarting.
+                    # Flushing stdout/stderr doesn't seem to help.
+                    time.sleep(1)
+                    # Commenting this for now since this could cause 100+ discord notifications.
+                    # send_monitor_notification(
+                    #     RESTARTER_PREFIX,
+                    #     f"{SCRIPT_NAME}: Updating restarter git repo on subnet {netuid}"
+                    # )
+                    os._exit(1)
+            else:
+                log_info(f"{__file__} unchanged. Doing nothing.")
+        else:
+            log_info("Commits are the same. Doing nothing.")
+
+        sleep_interval = 3600  # 1 hour
+        log_info(f"Sleeping for {sleep_interval} seconds.")
+        time.sleep(sleep_interval)
 
 
 def main(options):
@@ -1348,7 +1460,7 @@ def main(options):
         options.do_check_errors
         and not (options.pm2_processes or options.docker_containers)
     ):
-        bittensor.logging.warning(
+        log_warning(
             "No --pm2-process or --docker-container is specified. "
             "Not checking for log errors.")
         options.do_check_errors = False
@@ -1357,17 +1469,17 @@ def main(options):
         options.do_check_stopped_logs
         and not (options.pm2_processes or options.docker_containers)
     ):
-        bittensor.logging.warning(
+        log_warning(
             "No --pm2-process or --docker-container is specified. "
             "Not checking for stopped log output.")
         options.do_check_stopped_logs = False
 
     sleep_time = 15
-    bittensor.logging.info("")
-    bittensor.logging.info(f"Starting {SCRIPT_NAME} on subnet {options.netuid}")
-    bittensor.logging.info(f"Sleeping {sleep_time} seconds in case the "
-                            "validator process is just starting.")
-    bittensor.logging.info("")
+    log_info("")
+    log_info(f"Starting {SCRIPT_NAME} on subnet {options.netuid}")
+    log_info(f"Sleeping {sleep_time} seconds in case the "
+             "validator process is just starting.")
+    log_info("")
     time.sleep(sleep_time)
 
     # Gather all restart checks
@@ -1451,20 +1563,27 @@ def main(options):
     with ThreadPoolExecutor(max_workers=len(restart_checks)) as executor:
         while restart_checks:
             restart_check = restart_checks.pop(0)
-            bittensor.logging.info("")
-            bittensor.logging.info("="*(len(restart_check.descriptor)+18))
-            bittensor.logging.info(f"Running {restart_check.descriptor} checker.")
-            bittensor.logging.info("="*(len(restart_check.descriptor)+18))
-            bittensor.logging.info("")
+            log_info("")
+            log_info("="*(len(restart_check.descriptor)+18))
+            log_info(f"Running {restart_check.descriptor} checker.")
+            log_info("="*(len(restart_check.descriptor)+18))
+            log_info("")
 
             for (attr, value) in restart_check.set_options:
                 setattr(options, attr, value)
             executor.submit(_run_checker, restart_check.checker_class, options)
 
             if restart_checks:
-                bittensor.logging.info(f"Sleeping {sleep_time} seconds before "
-                                        "starting the next one.")
+                log_info(f"Sleeping {sleep_time} seconds before "
+                         "starting the next one.")
                 time.sleep(sleep_time)
+
+        log_info("Started all restart checkers.")
+        if options.do_check_restarter_code:
+            log_info(f"Sleeping {sleep_time} seconds before checking for "
+                     "restarter code updates.")
+            time.sleep(sleep_time)
+            check_for_restarter_code_update(options.netuid)
 
 
 if __name__ == "__main__":
