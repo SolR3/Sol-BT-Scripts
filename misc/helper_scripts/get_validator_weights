@@ -3,6 +3,7 @@
 import argparse
 from rich.text import Text
 from rich.console import Console
+import sys
 
 
 KNOWN_COLDKEYS = {
@@ -96,16 +97,43 @@ def print_weight_diffs(uid_a, uid_b, threshold, metagraph, verbose):
             print("")
 
 
+def get_uid_from_vali_name(metagraph, vali_name):
+    for coldkey, name in KNOWN_COLDKEYS.items():
+        if name.lower() == vali_name.lower():
+            if coldkey in metagraph.coldkeys:
+                return metagraph.coldkeys.index(coldkey)
+            else:
+                return
+
+
 def get_uids(diff_a, diff_b, metagraph):
     try:
         uid_a = int(diff_a)
     except ValueError:
-        uid_a = metagraph.hotkeys.index(diff_a)
+        try:
+            uid_a = metagraph.hotkeys.index(diff_a)
+        except ValueError:
+            uid_a = get_uid_from_vali_name(metagraph, diff_a)
+
+    if uid_a is None:
+        Console().print(Text(
+            f"ERROR: Could not find uid for {diff_a}.",
+            style="color(9)"))
+        sys.exit(1)
 
     try:
         uid_b = int(diff_b)
     except ValueError:
-        uid_b = metagraph.hotkeys.index(diff_b)
+        try:
+            uid_b = metagraph.hotkeys.index(diff_b)
+        except ValueError:
+            uid_b = get_uid_from_vali_name(metagraph, diff_b)
+
+    if uid_b is None:
+        Console().print(Text(
+            f"ERROR: Could not find uid for {diff_b}.",
+            style="color(9)"))
+        sys.exit(1)
 
     return uid_a, uid_b
 
