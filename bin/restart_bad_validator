@@ -902,26 +902,46 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
                 os.path.expanduser(p) for p in options.code_repo_path
             ]
         else:
-            # Get the repo path from the current working directory
-            git_cmd = "git rev-parse --show-toplevel"
-            try:
-                process = subprocess.run(
-                    shlex.split(git_cmd), check=True, stdout=subprocess.PIPE
-                )
-            except subprocess.CalledProcessError:
+            self._code_repo_paths = (
+                self._get_repo_path_from_cwd()
+                or self._get_repo_paths_from_pm2(options)
+                or self._get_repo_paths_from_restart_script(options)
+            )
+
+    def _get_repo_path_from_cwd(self):
+        # Get the repo path from the current working directory
+        git_cmd = "git rev-parse --show-toplevel"
+        try:
+            process = subprocess.run(
+                shlex.split(git_cmd), check=True, stdout=subprocess.PIPE
+            )
+        except subprocess.CalledProcessError:
+            self._log_warning(
+                f"Current working directory '{os.getcwd()}' is not a git repository."
+            )
+            return []
+
+        cwd_repo_path = process.stdout.decode().strip()
+
+        # TODO: This duplicate code needs to be in a separate function.
+        script_dir = os.path.dirname(__file__)
+        git_cmd = f"git -C {script_dir} rev-parse --show-toplevel"
+        try:
+            process = subprocess.run(shlex.split(git_cmd), check=True, stdout=subprocess.PIPE)
+        except subprocess.CalledProcessError as exc:
+            # Should never ever get here
+            self._log_warning(f"Could not find restarter git repo from path '{script_dir}': {exc}")
+        else:
+            script_repo_path = process.stdout.decode().strip()
+            if cwd_repo_path == script_repo_path:
                 self._log_warning(
-                    f"'{os.getcwd()}' is not a git repository."
+                    f"Current working directory repo path is the restarter repo path: '{cwd_repo_path}'"
                 )
-                # Try to get the code repo path from the validator pm2 processes
-                # if they exist.
-                self._code_repo_paths = self._get_repo_paths_from_pm2(options)
-                if not self._code_repo_paths:
-                    # Maybe this is running docker containers. Try to get the
-                    # code repo path from the rsn.sh script.
-                    self._code_repo_paths = \
-                        self._get_repo_paths_from_restart_script(options)
-            else:
-                self._code_repo_paths = [process.stdout.decode().strip()]
+                return []
+
+        self._log_info(f"Found repo path from current working directory: {cwd_repo_path}")
+        return [cwd_repo_path]
+
 
     def _get_repo_paths_from_pm2(self, options):
         # Try to get the code repo path from the validator pm2 processes
@@ -1380,6 +1400,7 @@ def check_for_restarter_code_update(netuid):
             f"{SCRIPT_NAME}: {RED_X} Failed to update restarter git repo on subnet {netuid}"
         )
 
+    # TODO: This duplicate code needs to be in a separate function.
     script_dir = os.path.dirname(__file__)
     repo_cmd = f"git -C {script_dir} rev-parse --show-toplevel"
     try:
