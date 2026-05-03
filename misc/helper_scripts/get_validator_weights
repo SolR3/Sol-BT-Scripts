@@ -6,7 +6,7 @@ from rich.console import Console
 import sys
 
 
-KNOWN_COLDKEYS = {
+LEGIT_VALI_COLDKEYS = {
     "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo": "Rizzo",
     "5DywxdtESjskgPZrDXL86qV44SpPgJuqs9X6noyJJwX9PaSD": "Rt21",
     "5EBuUXD6eXSSWVaT1NqaUQoAACUkAmEogzAfPQvDXTEQZ8Ff": "OTF",
@@ -14,6 +14,18 @@ KNOWN_COLDKEYS = {
     "5FHxxe8ZKYaNmGcSLdG5ekxXeZDhQnk9cbpHdsJW8RunGpSs": "Kraken",
     "5CWzmvA17MAMQ9mnAecLxFXS2N8846rz6T7m4QNHyVtJVq4j": "TAO.com",
     "5CqsgERpW6dJn4AtTkfckcUd7Ab6JNVa2Hb2MhyjApYVXMUV": "MUV",
+}
+
+WEIGHT_COPIER_COLDKEYS = {
+    "5EJAqczgzCMvWcmXhKMZH4vMS5gPy8BjeuHjz5o5yN6RYzX2": "Tao5 (WC)",
+    "5GsbTgfvgCH4xdqSkiPb7EaBBFLHjWH5vfEALhJaewSFpZX9": "Tao.bot (WC)",
+    "5Ek8i6wDRakJfJPM9wpJLYDE9G9uaqHLdARoewtTiLtbt33f": "1T1B.AI (WC)",
+    "5GP1VN5DcMNW5XL6cAFEzneN9fTfWMytNibZX8YMS7BgJBG6": "Kooltek68 (WC)",
+    "5Eq8b9p6zJMjEXyH9sX4DRMYspnUyorEKq3Zmha1WN6AC4sf": "Crucible Labs (WC)",
+    "5HiFDVNX4ivCJFt9RvgRCtQKmAPgAXGX8BRgX3XKqfY9fFve": "TAO.app (WC)",
+    "5F4XcaiEBkE3ARx2kG29KJ8e94nFfUZQYC4c7zfticastxiD": "Weight Copier",
+    "5DyMLUKuc6T3QFAXKd3w6dTcxmcH1WBZ1gDrRwJAnPf7N28w": "Weight Copier",
+    # "5EnXts8HKLv1o3qhFBGPaoZt1CjMd2g4RtKDpnp3A44xFCGK": "Weight Copier",  # 5FLoWC...SeRv8m
 }
 
 
@@ -51,18 +63,23 @@ def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold, metagraph,
     text.append(f"\nOwner:\n==========\n{owner_uid} - {owner_hotkey}\n\n\n")
     text.append("Weights:\n==========\n")
     for uid in metagraph.uids[metagraph.validator_permit]:
-        if metagraph.coldkeys[uid] in owner_coldkeys:
+        name = None
+        coldkey = metagraph.coldkeys[uid]
+        if coldkey in owner_coldkeys:
             name = "Owner"
-        else:
-            coldkey = metagraph.coldkeys[uid]
-            name = KNOWN_COLDKEYS.get(coldkey)
+            color = 14
+        elif coldkey in LEGIT_VALI_COLDKEYS:
+            name = LEGIT_VALI_COLDKEYS[coldkey]
+            color = 10 if name == "Rizzo" else 12
+        elif coldkey in WEIGHT_COPIER_COLDKEYS:
+            name = WEIGHT_COPIER_COLDKEYS[coldkey]
+            color = 9
 
         vtrust = metagraph.Tv[uid]
         updated = metagraph.block - metagraph.last_update[uid]
         weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > threshold]
 
         if name:
-            color = 10 if name == "Rizzo" else 14 if name == "Owner" else 12
             text.append(f"{name}:\n", style=f"color({color})")
         text.append(f"{uid} - {metagraph.hotkeys[uid]} (Weights: {len(weights)}  vT: {vtrust:.3f}  U: {updated})\n")
         if verbose:
@@ -98,7 +115,7 @@ def print_weight_diffs(uid_a, uid_b, threshold, metagraph, verbose):
 
 
 def get_uid_from_vali_name(metagraph, vali_name):
-    for coldkey, name in KNOWN_COLDKEYS.items():
+    for coldkey, name in LEGIT_VALI_COLDKEYS.items():
         if name.lower() == vali_name.lower():
             if coldkey in metagraph.coldkeys:
                 return metagraph.coldkeys.index(coldkey)
@@ -106,7 +123,7 @@ def get_uid_from_vali_name(metagraph, vali_name):
                 return
 
 
-def get_uids(diff_a, diff_b, metagraph):
+def get_diff_uids(diff_a, diff_b, metagraph):
     try:
         uid_a = int(diff_a)
     except ValueError:
@@ -175,7 +192,7 @@ def main(args):
         metagraph = subtensor.metagraph(args.netuid, lite=False)
 
     if args.diff:
-        uids = get_uids(*args.diff, metagraph)
+        uids = get_diff_uids(*args.diff, metagraph)
         print_weight_diffs(*uids, args.threshold, metagraph, args.verbose)
     else:
         owner_uid, owner_hotkey, owner_coldkeys = get_owner(subnet, metagraph)
