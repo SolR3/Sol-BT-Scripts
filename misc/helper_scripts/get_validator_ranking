@@ -12,7 +12,7 @@ from rich.text import Text
 from rich.console import Console
 
 
-KNOWN_COLDKEYS = {
+LEGIT_VALI_COLDKEYS = {
     "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo": "Rizzo",
     "5DywxdtESjskgPZrDXL86qV44SpPgJuqs9X6noyJJwX9PaSD": "Rt21",
     "5EBuUXD6eXSSWVaT1NqaUQoAACUkAmEogzAfPQvDXTEQZ8Ff": "OTF",
@@ -20,6 +20,18 @@ KNOWN_COLDKEYS = {
     "5FHxxe8ZKYaNmGcSLdG5ekxXeZDhQnk9cbpHdsJW8RunGpSs": "Kraken",
     "5CWzmvA17MAMQ9mnAecLxFXS2N8846rz6T7m4QNHyVtJVq4j": "TAO.com",
     "5CqsgERpW6dJn4AtTkfckcUd7Ab6JNVa2Hb2MhyjApYVXMUV": "MUV",
+}
+
+WEIGHT_COPIER_COLDKEYS = {
+    "5EJAqczgzCMvWcmXhKMZH4vMS5gPy8BjeuHjz5o5yN6RYzX2": "Tao5 (WC)",
+    "5GsbTgfvgCH4xdqSkiPb7EaBBFLHjWH5vfEALhJaewSFpZX9": "Tao.bot (WC)",
+    "5Ek8i6wDRakJfJPM9wpJLYDE9G9uaqHLdARoewtTiLtbt33f": "1T1B.AI (WC)",
+    "5GP1VN5DcMNW5XL6cAFEzneN9fTfWMytNibZX8YMS7BgJBG6": "Kooltek68 (WC)",
+    "5Eq8b9p6zJMjEXyH9sX4DRMYspnUyorEKq3Zmha1WN6AC4sf": "Crucible Labs (WC)",
+    "5HiFDVNX4ivCJFt9RvgRCtQKmAPgAXGX8BRgX3XKqfY9fFve": "TAO.app (WC)",
+    "5F4XcaiEBkE3ARx2kG29KJ8e94nFfUZQYC4c7zfticastxiD": "Weight Copier",
+    "5DyMLUKuc6T3QFAXKd3w6dTcxmcH1WBZ1gDrRwJAnPf7N28w": "Weight Copier",
+    # "5EnXts8HKLv1o3qhFBGPaoZt1CjMd2g4RtKDpnp3A44xFCGK": "Weight Copier",  # 5FLoWC...SeRv8m
 }
 
 
@@ -110,15 +122,17 @@ def print_stake_rankings(validators_stake, num_total):
             break
 
         text.append(f"{rank:<2} - ")
-        if coldkey in KNOWN_COLDKEYS:
-            name = KNOWN_COLDKEYS[coldkey]
+        if coldkey in LEGIT_VALI_COLDKEYS:
+            name = LEGIT_VALI_COLDKEYS[coldkey]
             color = 10 if name == "Rizzo" else 12
             style = f"color({color})"
-            # text.append(f"{name:<15}", style=f"color({color})")
+        elif coldkey in WEIGHT_COPIER_COLDKEYS:
+            name = WEIGHT_COPIER_COLDKEYS[coldkey]
+            color = 9
+            style = f"color({color})"
         else:
             name = coldkey[:6] + "..." + coldkey[-6:]
             style = None
-            # text.append(f"{name:<15}")
         text.append(f"{name:<15}", style=style)
 
         stake_data = validators_stake[coldkey]
