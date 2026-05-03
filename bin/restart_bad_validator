@@ -903,9 +903,9 @@ class ValidatorCheckerCodeUpdate(ValidatorChecker):
             ]
         else:
             self._code_repo_paths = (
-                self._get_repo_path_from_cwd()
+                self._get_repo_paths_from_restart_script(options)
                 or self._get_repo_paths_from_pm2(options)
-                or self._get_repo_paths_from_restart_script(options)
+                or self._get_repo_path_from_cwd()
             )
 
     def _get_repo_path_from_cwd(self):
