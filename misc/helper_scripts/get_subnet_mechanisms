@@ -15,17 +15,32 @@ def parse_args():
         nargs="+",
         help="The uids of the subnets to check. If not specified then all subnets are checked.")
 
+    parser.add_argument(
+        "-l", "--local-subtensor",
+        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
+             "When not specified, use the 'finney' network subtensor."
+    )
+
     return parser.parse_args()
+
+
+def get_network(name):
+    if not name:
+        return "finney"
+    return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
 
 
 async def main(args):
     import bittensor
 
+    network = get_network(args.local_subtensor)
+    print(f"Connecting to {network}")
+
     print("")
     print("Subnets with multiple mechanisms")
     print("=================================")
 
-    async with bittensor.AsyncSubtensor() as subtensor:
+    async with bittensor.AsyncSubtensor(network=network) as subtensor:
         if args.netuids:
             netuids = args.netuids
         else:

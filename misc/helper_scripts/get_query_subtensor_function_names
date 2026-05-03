@@ -4,11 +4,35 @@
 # Once you have a function you can find out the params it takes like this:
 # subtensor.substrate.get_metadata_storage_function("SubtensorModule", <func name>).docs
 
+# standard imports
+import argparse
 
-def main():
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-l", "--local-subtensor",
+        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
+             "When not specified, use the 'finney' network subtensor."
+    )
+
+    return parser.parse_args()
+
+
+def get_network(name):
+    if not name:
+        return "finney"
+    return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
+
+
+def main(args):
     import bittensor
 
-    with bittensor.Subtensor() as subtensor:
+    network = get_network(args.local_subtensor)
+    print(f"Connecting to {network}")
+
+    with bittensor.Subtensor(network=network) as subtensor:
         metadata = subtensor.substrate.get_metadata()
 
     for module in metadata.value()["pallets"]:
@@ -23,7 +47,8 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        args = parse_args()
+        main(args)
     except KeyboardInterrupt as exc:
         import traceback
         exc_list = traceback.format_exception_only(exc)

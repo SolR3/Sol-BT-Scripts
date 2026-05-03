@@ -43,13 +43,28 @@ def parse_args():
         help="Only display the top validators up to this number. For example, "
              "--top 50 shows only the top 50 validators.")
 
+    parser.add_argument(
+        "-l", "--local-subtensor",
+        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
+             "When not specified, use the 'finney' network subtensor."
+    )
+
     return parser.parse_args()
+
+
+def get_network(name):
+    if not name:
+        return "finney"
+    return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
 
 
 async def get_metagraphs():
     import bittensor
 
-    async with bittensor.AsyncSubtensor() as subtensor:
+    network = get_network(args.local_subtensor)
+    print(f"Connecting to {network}")
+
+    async with bittensor.AsyncSubtensor(network=network) as subtensor:
         # Get all subnets
         netuids = await subtensor.get_all_subnets_netuid()
         netuids = netuids[1:]
@@ -87,6 +102,7 @@ def print_stake_rankings(validators_stake, num_total):
     def get_tao_stake(coldkey):
         return validators_stake[coldkey].stake_in_tao
 
+    print("")
     text = Text()
 
     for rank, coldkey in enumerate(reversed(sorted(validators_stake, key=get_tao_stake)), 1):

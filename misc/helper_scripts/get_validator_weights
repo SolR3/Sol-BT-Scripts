@@ -54,7 +54,19 @@ def parse_args():
         dest="verbose",
         help="If specified then don't print the actual weight values.")
 
+    parser.add_argument(
+        "-l", "--local-subtensor",
+        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
+             "When not specified, use the 'finney' network subtensor."
+    )
+
     return parser.parse_args()
+
+
+def get_network(name):
+    if not name:
+        return "finney"
+    return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
 
 
 def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold, metagraph, verbose):
@@ -187,7 +199,10 @@ def get_owner(subnet, metagraph):
 def main(args):
     import bittensor
 
-    with bittensor.Subtensor() as subtensor:
+    network = get_network(args.local_subtensor)
+    print(f"Connecting to {network}")
+
+    with bittensor.Subtensor(network=network) as subtensor:
         subnet = subtensor.subnet(args.netuid)
         metagraph = subtensor.metagraph(args.netuid, lite=False)
 

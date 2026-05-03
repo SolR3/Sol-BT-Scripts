@@ -10,14 +10,29 @@ def parse_args():
         type=int,
         help="The uid of the subnet.")
 
+    parser.add_argument(
+        "-l", "--local-subtensor",
+        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
+             "When not specified, use the 'finney' network subtensor."
+    )
+
     return parser.parse_args()
+
+
+def get_network(name):
+    if not name:
+        return "finney"
+    return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
 
 
 def main(args):
     import bittensor
 
-    # cost = bittensor.Subtensor().get_subnet_info(args.netuid).burn
-    cost = bittensor.Subtensor().recycle(args.netuid)
+    network = get_network(args.local_subtensor)
+    print(f"Connecting to {network}")
+
+    # cost = bittensor.Subtensor(network=network).get_subnet_info(args.netuid).burn
+    cost = bittensor.Subtensor(network=network).recycle(args.netuid)
     print(f"\nRegistration cost for subnet {args.netuid} = {cost.unit}{cost.tao}\n")
 
 
