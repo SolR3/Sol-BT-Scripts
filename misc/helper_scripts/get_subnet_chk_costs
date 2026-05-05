@@ -63,7 +63,7 @@ def main(args):
         )
 
     print("")
-    print(f"Submit CHK cost for subnet {args.netuid} = {set_children_cost}")
+    print(f"Submit CHK cost for subnet   {args.netuid} = {set_children_cost}")
     print(f"Set CHK take cost for subnet {args.netuid} = {set_childkey_take_cost}")
     print("")
 
