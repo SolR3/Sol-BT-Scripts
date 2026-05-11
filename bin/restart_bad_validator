@@ -31,6 +31,7 @@ DISCORD_MONITOR_URL = (
 )
 RED_X = "\u274C"
 RED_QM = "\u2753"
+RED_EP = "\u203C\uFE0F"
 RESTARTER_PREFIX = "RESTARTER"
 
 # Debugging
@@ -150,6 +151,13 @@ def parse_args():
         help="When specified, this will skip the checking of the Updated value.")
 
     parser.add_argument(
+        "--skip-blacklist-logs-check",
+        action="store_false",
+        dest="do_check_blacklist_logs",
+        help="When specified, this will skip the checking of the log output "
+             "for miner blackisting patterns.")
+
+    parser.add_argument(
         "--skip-log-errors-check",
         action="store_false",
         dest="do_check_errors",
@@ -233,8 +241,12 @@ class ValidatorChecker:
         self._restarter = options.restarter_class(self, options)
 
         self._init_setup(options)
-
-        self._run()
+        try:
+            self._run()
+        except Exception as err:
+            import traceback
+            traceback.print_exc()
+            self._log_error(f"Error: {err}")
 
     @classmethod
     def _log_info(cls, message):
@@ -475,25 +487,76 @@ class ValidatorCheckerVTrust(ValidatorCheckerBittensor):
             time.sleep(sleep_interval)
 
 
-class ValidatorCheckerDockerLogErrors(ValidatorChecker):
-    log_prefix = "CHECK DOCKER LOG ERRORS"
-    _generic_patterns = [r"\[Errno 32\] Broken pipe"]
-    _subnet_patterns = []
+class ValidatorCheckerLogOutput(ValidatorChecker):
 
-    def _init_setup(self, options):
-        self._docker_container = options.docker_container
+    def _init_setup(self, options, process_name):
+        # Don't really need a wait timer for this since this is the only
+        # thread that's dealing with the blacklisting notify wait time.
+        # Just store the date at the time of notification and check that instead.
+        # self._blacklist_wait_timer = None
+        # self._blacklist_wait_event = threading.Event()
 
-    def _run(self):
-        self._log_info("")
-        self._log_info("Checking for log patterns.")
-        self._log_info("")
+        self._do_check_errors = options.do_check_errors
+        self._do_check_blacklist = options.do_check_blacklist_logs
 
         if not self._generic_patterns and not self._subnet_patterns:
             self._log_warning(
                 f"No log patterns defined for subnet {self._netuid}. "
-                "Not checking for log patterns."
+                "Not checking for restart patterns."
+            )
+            self._do_check_errors = False
+
+        self._blacklist_regex = re.compile("blacklist", flags=re.IGNORECASE)
+        self._blacklist_wait_time = 86400  # 1 day
+        self._blacklist_notify_time = None
+        self._process_name = process_name
+
+    def _check_for_blacklist(self, log_line):
+        current_time = time.time()
+        if (
+            self._blacklist_notify_time and 
+            current_time < (self._blacklist_notify_time + self._blacklist_wait_time)
+        ):
+            self._log_debug(
+                f"({self._process_name}) Log line blacklist check skipped. "
+                "Too soon since last notification."
             )
             return
+
+        if self._blacklist_regex.search(log_line):
+            self._log_info(f"Log line matches the blacklist pattern:\n{log_line}\n")
+            send_monitor_notification(
+                self.log_prefix,
+                f"{SCRIPT_NAME}: {RED_EP} We're being blacklisted on subnet {self._netuid}"
+            )
+            self._blacklist_notify_time = current_time
+
+
+class ValidatorCheckerDockerLogOutput(ValidatorCheckerLogOutput):
+    log_prefix = "CHECK DOCKER LOG OUTPUT"
+    _generic_patterns = [r"\[Errno 32\] Broken pipe"]
+    _subnet_patterns = []
+
+    def _init_setup(self, options):
+        super()._init_setup(options, options.docker_container)
+
+        self._docker_container = options.docker_container
+
+    def _run(self):
+        self._log_info("")
+        self._log_info("Checking log output.")
+        self._log_info("")
+
+        if not self._do_check_errors and not self._do_check_blacklist:
+            self._log_warning(
+                "Restart patterns and blacklising checks are both False. Nothing to do."
+            )
+            return
+
+        if self._do_check_errors:
+            self._log_info("Checking for errors.")
+        if self._do_check_blacklist:
+            self._log_info("Checking for miner blacklisting.")
 
         log_regexes = []
         for log_pattern in self._generic_patterns + self._subnet_patterns:
@@ -511,21 +574,29 @@ class ValidatorCheckerDockerLogErrors(ValidatorChecker):
             master = os.fdopen(mfd)
             while True:
                 try:
-                    line = master.readline()
+                    log_line = master.readline()
                 except:
                     # The process exited.
                     self._log_info(f"Process exited: \"{command_str}\"")
                     break
                 else:
+                    if self._do_check_blacklist:
+                        # Check if we're being blacklisted
+                        self._check_for_blacklist(log_line)
+
+                    if not self._do_check_errors:
+                        continue
+
+                    # Check for restart patterns
                     do_restart = False
                     for log_regex in log_regexes:
-                        match = log_regex.search(line)
+                        match = log_regex.search(log_line)
                         if match:
                             do_restart = True
                             pattern = match.group()
                             self._log_info(
                                 f"Log line matches a restart pattern: \"{pattern}\"\n"
-                                f"{line}\n")
+                                f"{log_line}\n")
                             self._restarter.do_restart(
                                 f"Docker log output matches a restart pattern: \"{pattern}\""
                             )
@@ -541,20 +612,20 @@ class ValidatorCheckerDockerLogErrors(ValidatorChecker):
             time.sleep(sleep_time)
 
 
-class ValidatorCheckerDockerLogErrorsSn52(ValidatorCheckerDockerLogErrors):
+class ValidatorCheckerDockerLogOutputSn52(ValidatorCheckerDockerLogOutput):
     _generic_patterns = []
     _subnet_patterns = [r"websockets\.exceptions\.InvalidStatus"]
 
-class ValidatorCheckerDockerLogErrorsSn59(ValidatorCheckerDockerLogErrors):
+class ValidatorCheckerDockerLogOutputSn59(ValidatorCheckerDockerLogOutput):
     _subnet_patterns = [r"\[websockets\.client\] unexpected internal error"]
 
-class ValidatorCheckerDockerLogErrorsSn64(ValidatorCheckerDockerLogErrors):
+class ValidatorCheckerDockerLogOutputSn64(ValidatorCheckerDockerLogOutput):
     _generic_patterns = []
     _subnet_patterns = []  # [r"Weights set successfully\."]
 
 
-class ValidatorCheckerPm2LogErrors(ValidatorChecker):
-    log_prefix = "CHECK PM2 LOG ERRORS"
+class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
+    log_prefix = "CHECK PM2 LOG OUTPUT"
     _generic_patterns = [r"\[Errno 32\] Broken pipe"]
     _subnet_patterns = []
     _skip_initial_log_lines = 40
@@ -579,7 +650,7 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                     interval=self._wait_time, function=self._unset_wait_event
                 )
                 self._wait_timer.start()
-                ValidatorCheckerPm2LogErrors._log_info(
+                ValidatorCheckerPm2LogOutput._log_info(
                     f"Stopping pm2 log patterns check. Waiting {self._wait_time} "
                     "seconds after restart to continue checking log patterns."
                 )
@@ -587,25 +658,31 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
         def _unset_wait_event(self):
             with self._timer_lock:
                 self._wait_event.clear()
-                ValidatorCheckerPm2LogErrors._log_info(
+                ValidatorCheckerPm2LogOutput._log_info(
                     "Continuing pm2 log patterns check."
                 )
 
     def _init_setup(self, options):
+        super()._init_setup(options, options.pm2_process)
+
         self._pm2_process = options.pm2_process
         self._restart_wait_time = options.log_errors_restart_wait_time * 60
 
     def _run(self):
         self._log_info("")
-        self._log_info("Checking for log patterns.")
+        self._log_info("Checking log output.")
         self._log_info("")
 
-        if not self._generic_patterns and not self._subnet_patterns:
+        if not self._do_check_errors and not self._do_check_blacklist:
             self._log_warning(
-                f"No log patterns defined for subnet {self._netuid}. "
-                "Not checking for log patterns."
+                "Restart patterns and blacklising checks are both False. Nothing to do."
             )
             return
+
+        if self._do_check_errors:
+            self._log_info("Checking for errors.")
+        if self._do_check_blacklist:
+            self._log_info("Checking for miner blacklisting.")
 
         self._create_error_logs_wait_timer(self._restart_wait_time)
 
@@ -626,12 +703,20 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
             master = os.fdopen(mfd)
             while True:
                 try:
-                    line = master.readline()
+                    log_line = master.readline()
                 except:
                     # The process exited.
                     self._log_info(f"Process exited: \"{command_str}\"")
                     break
                 else:
+                    if self._do_check_blacklist:
+                        # Check if we're being blacklisted
+                        self._check_for_blacklist(log_line)
+
+                    if not self._do_check_errors:
+                        continue
+
+                    # Check whether or not restart patterns should be checked
                     if _initial_log_lines < self._skip_initial_log_lines:
                         _initial_log_lines += 1
                         self._log_debug(f"{_initial_log_lines=}")
@@ -647,13 +732,14 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                         )
                         continue
 
+                    # Check for restart patterns
                     for log_regex in log_regexes:
-                        match = log_regex.search(line)
+                        match = log_regex.search(log_line)
                         if match:
                             pattern = match.group()
                             self._log_info(
                                 f"Log line matches a restart pattern: \"{pattern}\"\n"
-                                f"{line}\n")
+                                f"{log_line}\n")
                             self._restarter.do_restart(
                                 f"Pm2 log output matches a restart pattern: \"{pattern}\""
                             )
@@ -675,88 +761,88 @@ class ValidatorCheckerPm2LogErrors(ValidatorChecker):
                 cls.ErrorLogsWaitTimer(wait_time)
             )
 
-class ValidatorCheckerPm2LogErrorsSn1(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn1(ValidatorCheckerPm2LogOutput):
     _subnet_patterns = [r"json\.decoder\.JSONDecodeError:"]
 
-# class ValidatorCheckerPm2LogErrorsSn2(ValidatorCheckerPm2LogErrors):
+# class ValidatorCheckerPm2LogOutputSn2(ValidatorCheckerPm2LogOutput):
 #     _subnet_patterns = [r"Successfully checked out the latest release"]
 
-class ValidatorCheckerPm2LogErrorsSn4(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn4(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
 
-class ValidatorCheckerPm2LogErrorsSn10(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn10(ValidatorCheckerPm2LogOutput):
     _subnet_patterns = [r"Error during validation"]
 
-class ValidatorCheckerPm2LogErrorsSn16(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn16(ValidatorCheckerPm2LogOutput):
     _subnet_patterns = [r"ConnectionRefusedError"]
 
-class ValidatorCheckerPm2LogErrorsSn18(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn18(ValidatorCheckerPm2LogOutput):
     _subnet_patterns = [r"asyncio\.exceptions\.CancelledError"]
 
-# class ValidatorCheckerPm2LogErrorsSn20(ValidatorCheckerPm2LogErrors):
+# class ValidatorCheckerPm2LogOutputSn20(ValidatorCheckerPm2LogOutput):
 #     _subnet_patterns = [r"Error in forward: Failed to get task after \d+ attempts"]
 
-class ValidatorCheckerPm2LogErrorsSn21(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn21(ValidatorCheckerPm2LogOutput):
     _subnet_patterns = [r"asyncio\.exceptions\.CancelledError"]
 
-class ValidatorCheckerPm2LogErrorsSn24(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn24(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
     # _subnet_patterns = [r"EOF occurred in violation of protocol"]
 
-class ValidatorCheckerPm2LogErrorsSn27(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn27(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
 
-class ValidatorCheckerPm2LogErrorsSn28(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn28(ValidatorCheckerPm2LogOutput):
     _subnet_patterns = [r"Transaction has an ancient birth block"]
 
-class ValidatorCheckerPm2LogErrorsSn29(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn29(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
 
-class ValidatorCheckerPm2LogErrorsSn30(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn30(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
     # _subnet_patterns = [r"asyncio\.exceptions\.CancelledError"]
 
-class ValidatorCheckerPm2LogErrorsSn32(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn32(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
 
-class ValidatorCheckerPm2LogErrorsSn34(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn34(ValidatorCheckerPm2LogOutput):
     _subnet_patterns = [
         r"Handshake status 502 Bad Gateway",
         r"Error during validation",
     ]
 
-class ValidatorCheckerPm2LogErrorsSn36(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn36(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
 
-class ValidatorCheckerPm2LogErrorsSn38(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn38(ValidatorCheckerPm2LogOutput):
     _subnet_patterns = [r"\[Errno -2\] Name or service not known"]
 
-class ValidatorCheckerPm2LogErrorsSn41(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn41(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
 
-class ValidatorCheckerPm2LogErrorsSn42(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn42(ValidatorCheckerPm2LogOutput):
     _subnet_patterns = [r"EOF occurred in violation of protocol"]
 
-class ValidatorCheckerPm2LogErrorsSn43(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn43(ValidatorCheckerPm2LogOutput):
     _subnet_patterns = [r"Error during validation"]
 
-class ValidatorCheckerPm2LogErrorsSn46(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn46(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
 
-class ValidatorCheckerPm2LogErrorsSn52(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn52(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
     _subnet_patterns = [r"websockets\.exceptions\.InvalidStatus"]
 
-class ValidatorCheckerPm2LogErrorsSn55(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn55(ValidatorCheckerPm2LogOutput):
     _subnet_patterns = [r"websockets\.exceptions\.InvalidStatus"]
 
-class ValidatorCheckerPm2LogErrorsSn79(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn79(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
 
-class ValidatorCheckerPm2LogErrorsSn83(ValidatorCheckerPm2LogErrors):
+class ValidatorCheckerPm2LogOutputSn83(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
 
-# class ValidatorCheckerPm2LogErrorsSn91(ValidatorCheckerPm2LogErrors):
+# class ValidatorCheckerPm2LogOutputSn91(ValidatorCheckerPm2LogOutput):
 #     _subnet_patterns = [r"Successfully set weights"]
 
 
@@ -1328,39 +1414,39 @@ class ValidatorRestarterRsnScript:
 
 
 PM2_LOGS_VALIDATORS_DICT = {
-    1: ValidatorCheckerPm2LogErrorsSn1,
-    # 2: ValidatorCheckerPm2LogErrorsSn2,
-    4: ValidatorCheckerPm2LogErrorsSn4,
-    10: ValidatorCheckerPm2LogErrorsSn10,
-    16: ValidatorCheckerPm2LogErrorsSn16,
-    18: ValidatorCheckerPm2LogErrorsSn18,
-    21: ValidatorCheckerPm2LogErrorsSn21,
-    # 20: ValidatorCheckerPm2LogErrorsSn20,
-    24: ValidatorCheckerPm2LogErrorsSn24,
-    27: ValidatorCheckerPm2LogErrorsSn27,
-    28: ValidatorCheckerPm2LogErrorsSn28,
-    29: ValidatorCheckerPm2LogErrorsSn29,
-    30: ValidatorCheckerPm2LogErrorsSn30,
-    32: ValidatorCheckerPm2LogErrorsSn32,
-    34: ValidatorCheckerPm2LogErrorsSn34,
-    36: ValidatorCheckerPm2LogErrorsSn36,
-    38: ValidatorCheckerPm2LogErrorsSn38,
-    41: ValidatorCheckerPm2LogErrorsSn41,
-    42: ValidatorCheckerPm2LogErrorsSn42,
-    43: ValidatorCheckerPm2LogErrorsSn43,
-    46: ValidatorCheckerPm2LogErrorsSn46,
-    52: ValidatorCheckerPm2LogErrorsSn52,
-    55: ValidatorCheckerPm2LogErrorsSn55,
-    79: ValidatorCheckerPm2LogErrorsSn79,
-    83: ValidatorCheckerPm2LogErrorsSn83,
-    # 91: ValidatorCheckerPm2LogErrorsSn91,
+    1: ValidatorCheckerPm2LogOutputSn1,
+    # 2: ValidatorCheckerPm2LogOutputSn2,
+    4: ValidatorCheckerPm2LogOutputSn4,
+    10: ValidatorCheckerPm2LogOutputSn10,
+    16: ValidatorCheckerPm2LogOutputSn16,
+    18: ValidatorCheckerPm2LogOutputSn18,
+    21: ValidatorCheckerPm2LogOutputSn21,
+    # 20: ValidatorCheckerPm2LogOutputSn20,
+    24: ValidatorCheckerPm2LogOutputSn24,
+    27: ValidatorCheckerPm2LogOutputSn27,
+    28: ValidatorCheckerPm2LogOutputSn28,
+    29: ValidatorCheckerPm2LogOutputSn29,
+    30: ValidatorCheckerPm2LogOutputSn30,
+    32: ValidatorCheckerPm2LogOutputSn32,
+    34: ValidatorCheckerPm2LogOutputSn34,
+    36: ValidatorCheckerPm2LogOutputSn36,
+    38: ValidatorCheckerPm2LogOutputSn38,
+    41: ValidatorCheckerPm2LogOutputSn41,
+    42: ValidatorCheckerPm2LogOutputSn42,
+    43: ValidatorCheckerPm2LogOutputSn43,
+    46: ValidatorCheckerPm2LogOutputSn46,
+    52: ValidatorCheckerPm2LogOutputSn52,
+    55: ValidatorCheckerPm2LogOutputSn55,
+    79: ValidatorCheckerPm2LogOutputSn79,
+    83: ValidatorCheckerPm2LogOutputSn83,
+    # 91: ValidatorCheckerPm2LogOutputSn91,
 }
 
 
 DOCKER_LOGS_VALIDATORS_DICT = {
-    52: ValidatorCheckerDockerLogErrorsSn52,
-    59: ValidatorCheckerDockerLogErrorsSn59,
-    64: ValidatorCheckerDockerLogErrorsSn64,
+    52: ValidatorCheckerDockerLogOutputSn52,
+    59: ValidatorCheckerDockerLogOutputSn59,
+    64: ValidatorCheckerDockerLogOutputSn64,
 }
 
 
@@ -1477,23 +1563,24 @@ def main(options):
     else:
         bittensor.logging.enable_info()
 
-    if (
-        options.do_check_errors
-        and not (options.pm2_processes or options.docker_containers)
-    ):
-        log_warning(
-            "No --pm2-process or --docker-container is specified. "
-            "Not checking for log errors.")
-        options.do_check_errors = False
+    if not (options.pm2_processes or options.docker_containers):
+        if options.do_check_errors:
+            log_warning(
+                "No --pm2-process or --docker-container is specified. "
+                "Not checking for log errors.")
+            options.do_check_errors = False
 
-    if (
-        options.do_check_stopped_logs
-        and not (options.pm2_processes or options.docker_containers)
-    ):
-        log_warning(
-            "No --pm2-process or --docker-container is specified. "
-            "Not checking for stopped log output.")
-        options.do_check_stopped_logs = False
+        if options.do_check_stopped_logs:
+            log_warning(
+                "No --pm2-process or --docker-container is specified. "
+                "Not checking for stopped log output.")
+            options.do_check_stopped_logs = False
+
+        if options.do_check_blacklist_logs:
+            log_warning(
+                "No --pm2-process or --docker-container is specified. "
+                "Not checking for miner blackisting in logs.")
+            options.do_check_blacklist_logs = False
 
     sleep_time = 15
     log_info("")
@@ -1526,23 +1613,23 @@ def main(options):
         )
 
     # Add log errors checks
-    if options.do_check_errors:
+    if options.do_check_errors or options.do_check_blacklist_logs:
         docker_log_checker_class = \
-            DOCKER_LOGS_VALIDATORS_DICT.get(options.netuid, ValidatorCheckerDockerLogErrors)
+            DOCKER_LOGS_VALIDATORS_DICT.get(options.netuid, ValidatorCheckerDockerLogOutput)
         for docker_container in options.docker_containers:
             restart_checks.append(
                 RestartChecker(
-                    descriptor="docker log errors",
+                    descriptor="docker log output",
                     checker_class=docker_log_checker_class,
                     set_options=(("docker_container", docker_container),)
                 )
             )
         for pm2_process in options.pm2_processes:
             pm2_log_checker_class = \
-                PM2_LOGS_VALIDATORS_DICT.get(options.netuid, ValidatorCheckerPm2LogErrors)
+                PM2_LOGS_VALIDATORS_DICT.get(options.netuid, ValidatorCheckerPm2LogOutput)
             restart_checks.append(
                 RestartChecker(
-                    descriptor="pm2 log errors",
+                    descriptor="pm2 log output",
                     checker_class=pm2_log_checker_class,
                     set_options=(("pm2_process", pm2_process),)
                 )
