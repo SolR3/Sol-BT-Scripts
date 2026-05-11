@@ -522,6 +522,7 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
                 "Registry token expired",  # sn19
                 r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"Found \d+ blacklisted miners to exclude",  # sn64
+                "Set scores to 0 for blacklisted UIDs",  # sn74
                 "hotkey_not_in_metagraph.",  # sn128: blacklisted miners
             )
         ]
