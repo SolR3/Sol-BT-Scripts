@@ -516,6 +516,7 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
         self._blacklist_exclude_regexes = [
             re.compile(exclude_string) for exclude_string in (
                 "blacklist_fn took",  # sn8
+                "Set dynamic config",  # sn12 setting some BLACKLIST-related env var
                 "5GjsS9uKWJ6PHdgEfWPaYx2AuDjw9ydPufQgPycGemvG1r8W",  # blacklisted miner on sn19
                 "hotkey_not_in_metagraph.",  # blacklisted miners on sn128
             )
