@@ -248,6 +248,12 @@ class ValidatorChecker:
             traceback.print_exc()
             self._log_error(f"Error: {err}")
 
+            send_monitor_notification(
+                self.log_prefix,
+                f"{SCRIPT_NAME}: {RED_X} restarter check \"{self.log_prefix}\" "
+                f"failed on subnet {self._netuid}"
+            )
+
     @classmethod
     def _log_info(cls, message):
         bittensor.logging.info(f"{cls.log_prefix}: {message}")
