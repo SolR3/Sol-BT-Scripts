@@ -1564,6 +1564,8 @@ def check_for_restarter_code_update(netuid):
 
 
 def main(options):
+    options.do_check_blacklist_logs = False  # TODO: Temporarily force-disabling blacklist logs
+
     if DEBUG:
         bittensor.logging.enable_debug()
     else:
