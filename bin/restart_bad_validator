@@ -513,6 +513,14 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
             self._do_check_errors = False
 
         self._blacklist_regex = re.compile("blacklist", flags=re.IGNORECASE)
+        self._blacklist_exclude_regexes = [
+            re.compile(exclude_string) for exclude_string in (
+                "blacklist_fn took",  # sn8
+                "5GjsS9uKWJ6PHdgEfWPaYx2AuDjw9ydPufQgPycGemvG1r8W",  # blacklisted miner on sn19
+                "hotkey_not_in_metagraph.",  # blacklisted miners on sn128
+            )
+        ]
+
         self._blacklist_wait_time = 86400  # 1 day
         self._blacklist_notify_time = None
         self._process_name = process_name
@@ -531,11 +539,23 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
 
         if self._blacklist_regex.search(log_line):
             self._log_info(f"Log line matches the blacklist pattern:\n{log_line}\n")
-            send_monitor_notification(
-                self.log_prefix,
-                f"{SCRIPT_NAME}: {RED_EP} We're being blacklisted on subnet {self._netuid}"
-            )
-            self._blacklist_notify_time = current_time
+            for exclude_regex in self._blacklist_exclude_regexes:
+                if exclude_regex.search(log_line):
+                    self._log_info(
+                        "Log line matches a blacklist exclude pattern. "
+                        "Not sending a discord notification."
+                    )
+                    break
+            else:
+                self._log_info(
+                        "Log line does not match any blacklist exclude patterns. "
+                        "Sending a discord notification."
+                    )
+                send_monitor_notification(
+                    self.log_prefix,
+                    f"{SCRIPT_NAME}: {RED_EP} We're being blacklisted on subnet {self._netuid}"
+                )
+                self._blacklist_notify_time = current_time
 
 
 class ValidatorCheckerDockerLogOutput(ValidatorCheckerLogOutput):
@@ -1564,7 +1584,7 @@ def check_for_restarter_code_update(netuid):
 
 
 def main(options):
-    options.do_check_blacklist_logs = False  # TODO: Temporarily force-disabling blacklist logs
+    # options.do_check_blacklist_logs = False  # Temporarily force-disabling blacklist logs check
 
     if DEBUG:
         bittensor.logging.enable_debug()
