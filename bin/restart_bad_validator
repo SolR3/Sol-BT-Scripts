@@ -517,8 +517,9 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
             re.compile(exclude_string) for exclude_string in (
                 "blacklist_fn took",  # sn8
                 "Set dynamic config",  # sn12: setting some BLACKLIST-related env var
+                "Evicting expired miner blacklists",   # sn12
                 r"reddit\.com",  # sn13
-                "5GjsS9uKWJ6PHdgEfWPaYx2AuDjw9ydPufQgPycGemvG1r8W",  # sn19: blacklisted miner
+                "PERMANENT BAN for miner",  # sn19
                 "Registry token expired",  # sn19
                 r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"Found \d+ blacklisted miners to exclude",  # sn64
