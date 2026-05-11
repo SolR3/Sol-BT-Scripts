@@ -516,11 +516,13 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
         self._blacklist_exclude_regexes = [
             re.compile(exclude_string) for exclude_string in (
                 "blacklist_fn took",  # sn8
-                "Set dynamic config",  # sn12 setting some BLACKLIST-related env var
+                "Set dynamic config",  # sn12: setting some BLACKLIST-related env var
                 r"reddit\.com",  # sn13
-                "5GjsS9uKWJ6PHdgEfWPaYx2AuDjw9ydPufQgPycGemvG1r8W",  # blacklisted miner on sn19
+                "5GjsS9uKWJ6PHdgEfWPaYx2AuDjw9ydPufQgPycGemvG1r8W",  # sn19: blacklisted miner
+                "Registry token expired",  # sn19
+                r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"Found \d+ blacklisted miners to exclude",  # sn64
-                "hotkey_not_in_metagraph.",  # blacklisted miners on sn128
+                "hotkey_not_in_metagraph.",  # sn128: blacklisted miners
             )
         ]
 
