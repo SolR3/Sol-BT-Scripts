@@ -519,6 +519,7 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
                 "Set dynamic config",  # sn12: setting some BLACKLIST-related env var
                 "Evicting expired miner blacklists",   # sn12
                 r"reddit\.com",  # sn13
+                "Judge response unparseable",  # sn15
                 "PERMANENT BAN for miner",  # sn19
                 "Registry token expired",  # sn19
                 "Failed to check ban status",  # sn19
