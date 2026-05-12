@@ -523,6 +523,7 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
                 "PERMANENT BAN for miner",  # sn19
                 "Registry token expired",  # sn19
                 "Failed to check ban status",  # sn19
+                "Returned incorrect data for deterministic query",  # sn19
                 r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"Found \d+ blacklisted miners to exclude",  # sn64
                 "Set scores to 0 for blacklisted UIDs",  # sn74
