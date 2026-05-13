@@ -520,10 +520,7 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
                 "Evicting expired miner blacklists",   # sn12
                 r"reddit\.com",  # sn13
                 "Judge response unparseable",  # sn15
-                "PERMANENT BAN for miner",  # sn19
-                "Registry token expired",  # sn19
-                "Failed to check ban status",  # sn19
-                "Returned incorrect data for deterministic query",  # sn19
+                "validator.api.registry_blacklist",  # sn19: module for blacklisting miners
                 r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"Found \d+ blacklisted miners to exclude",  # sn64
                 "Set scores to 0 for blacklisted UIDs",  # sn74
