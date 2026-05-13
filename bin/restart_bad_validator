@@ -526,6 +526,7 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
                 r"Found \d+ blacklisted miners to exclude",  # sn64
                 "Set scores to 0 for blacklisted UIDs",  # sn74
                 "not registered.",  # sn74
+                r"Miner .*is BLACKLISTED",  # sn96
                 "hotkey_not_in_metagraph.",  # sn128: blacklisted miners
             )
         ]
