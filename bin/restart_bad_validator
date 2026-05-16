@@ -872,7 +872,7 @@ class ValidatorCheckerPm2LogOutputSn52(ValidatorCheckerPm2LogOutput):
     _subnet_patterns = [r"websockets\.exceptions\.InvalidStatus"]
 
 class ValidatorCheckerPm2LogOutputSn55(ValidatorCheckerPm2LogOutput):
-    _subnet_patterns = [r"websockets\.exceptions\.InvalidStatus"]
+    _subnet_patterns = [r"TimeoutError"]
 
 class ValidatorCheckerPm2LogOutputSn79(ValidatorCheckerPm2LogOutput):
     _generic_patterns = []
