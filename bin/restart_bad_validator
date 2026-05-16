@@ -1538,7 +1538,7 @@ def check_for_restarter_code_update(netuid):
 
     repo_path = process.stdout.decode().strip()
 
-    while True:
+    def do_update():
         log_info("Checking for restarter code updates.")
 
         # Get current commit
@@ -1591,6 +1591,9 @@ def check_for_restarter_code_update(netuid):
                 log_info(f"{__file__} unchanged. Doing nothing.")
         else:
             log_info("Commits are the same. Doing nothing.")
+
+    while True:
+        do_update()
 
         sleep_interval = 3600  # 1 hour
         log_info(f"Sleeping for {sleep_interval} seconds.")
