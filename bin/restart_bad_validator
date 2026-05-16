@@ -515,6 +515,7 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
         self._blacklist_regex = re.compile("blacklist", flags=re.IGNORECASE)
         self._blacklist_exclude_regexes = [
             re.compile(exclude_string) for exclude_string in (
+                "reconnect_blacklist pruned",  # sn2
                 "blacklist_fn took",  # sn8
                 "Set dynamic config",  # sn12: setting some BLACKLIST-related env var
                 "Evicting expired miner blacklists",   # sn12
