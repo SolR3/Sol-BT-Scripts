@@ -523,6 +523,8 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
                 "Judge response unparseable",  # sn15
                 "validator.api.registry_blacklist",  # sn19: module for blacklisting miners
                 "validator.verification.blacklist",  # sn19: module for blacklisting miners
+                "twitter_content_relevance",  # sn22: contains twitter content which could have the word "blacklist" in it
+                "Failed to decode JSON object",  # sn22: contains twitter content which could have the word "blacklist" in it
                 r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"Found \d+ blacklisted miners to exclude",  # sn64
                 "Set scores to 0 for blacklisted UIDs",  # sn74
