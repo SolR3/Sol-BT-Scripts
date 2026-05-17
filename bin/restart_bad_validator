@@ -530,6 +530,7 @@ class ValidatorCheckerLogOutput(ValidatorChecker):
                 "Set scores to 0 for blacklisted UIDs",  # sn74
                 "not registered.",  # sn74
                 r"Miner .*is BLACKLISTED",  # sn96
+                "Blacklist check timeout",  # sn96
                 "Invalid submission for hotkey",  # sn108: blacklisted miners
                 "hotkey_not_in_metagraph.",  # sn128: blacklisted miners
             )
