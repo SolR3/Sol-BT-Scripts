@@ -128,6 +128,13 @@ def parse_args():
              "to check multiple code repos.")
 
     parser.add_argument(
+        "--code-check-tags",
+        action="store_true",
+        help="When specified, this will check for git repo updates by checking whether the "
+             "latest tag is checked out. When not specified, this will check for the "
+             "latest commit.")
+
+    parser.add_argument(
         "--do-vtrust-check",
         action="store_true",
         dest="do_check_vtrust",
@@ -1505,9 +1512,6 @@ DOCKER_LOGS_VALIDATORS_DICT = {
 }
 
 
-GIT_TAG_VALIDATORS = [2, 42, 50, 81]
-
-
 def log_info(message):
     bittensor.logging.info(f"{RESTARTER_PREFIX}: {message}")
 
@@ -1717,7 +1721,7 @@ def main(options):
     # Add code update check
     if options.do_check_code:
         code_checker_class = (
-            ValidatorCheckerCodeUpdateLatestTag if options.netuid in GIT_TAG_VALIDATORS
+            ValidatorCheckerCodeUpdateLatestTag if options.code_check_tags
             else ValidatorCheckerCodeUpdate
         )
         restart_checks.append(
