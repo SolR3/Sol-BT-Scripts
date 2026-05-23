@@ -13,6 +13,7 @@ def parse_args():
 
     parser.add_argument(
         "-u", "--uids",
+        type=int,
         nargs="+",
         required=True,
         help="The uids of the validators for which to print weights.")
@@ -89,7 +90,8 @@ def print_weights(subtensor, args):
 
         print(f"Time: {time_diff}")
         for uid in args.uids:
-            print([(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if float(w) > args.threshold])
+            weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if float(w) > args.threshold]
+            print(f"uid {uid}: {weights}")
         print("")
 
 
