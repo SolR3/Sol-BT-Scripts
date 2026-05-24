@@ -90,9 +90,11 @@ def print_weights(subtensor, args):
 
         print(f"Time: {time_diff}")
         for uid in args.uids:
+            vtrust = metagraph.Tv[uid]
+            updated = metagraph.block - metagraph.last_update[uid]
             weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if float(w) > args.threshold]
-            print(f"uid {uid}: {weights}")
-        print("")
+            print(f"uid {uid} (vT: {vtrust:.3f}  U: {updated}):\n{weights}\n")
+        print("\n")
 
 
 def main(args):
