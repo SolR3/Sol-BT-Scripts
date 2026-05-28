@@ -67,6 +67,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 "Set dynamic config",  # sn12: setting some BLACKLIST-related env var
                 "Evicting expired miner blacklists",   # sn12
                 r"reddit\.com",  # sn13
+                r"tweet_id=",  # sn13
                 "Judge response unparseable",  # sn15
                 "validator.api.registry_blacklist",  # sn19: module for blacklisting miners
                 "validator.verification.blacklist",  # sn19: module for blacklisting miners
@@ -74,6 +75,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 "Failed to decode JSON object",  # sn22: contains twitter content which could have the word "blacklist" in it
                 r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"Found \d+ blacklisted miners to exclude",  # sn64
+                r"session_id=",  # sn67: scraping something off internet that happens to have "blacklist" in it
                 "Set scores to 0 for blacklisted UIDs",  # sn74
                 "not registered.",  # sn74
                 r"Miner .*is BLACKLISTED",  # sn96
