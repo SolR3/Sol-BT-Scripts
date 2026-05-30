@@ -88,7 +88,7 @@ async def main(args):
     block_diffs = [block_interval * n for n in range(num_weight_samples)]
     print(f"\nBlock interval: {block_interval} ({args.interval} hours)\n")
 
-    with bittensor.AsyncSubtensor(network=network) as subtensor:
+    async with bittensor.AsyncSubtensor(network=network) as subtensor:
         current_block = await subtensor.block
         metagraphs = await asyncio.gather(
             *[
