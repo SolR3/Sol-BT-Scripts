@@ -39,6 +39,12 @@ def parse_args():
         help="The interval at which to print weights, in hours.")
 
     parser.add_argument(
+        "--concise",
+        action="store_false",
+        dest="verbose",
+        help="If specified then don't print the actual weight values.")
+
+    parser.add_argument(
         "-l", "--local-subtensor",
         help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
              "When not specified, use the 'finney' network subtensor."
@@ -107,7 +113,9 @@ async def main(args):
             vtrust = metagraph.Tv[uid]
             updated = metagraph.block - metagraph.last_update[uid]
             weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if float(w) > args.threshold]
-            print(f"uid {uid} (vT: {vtrust:.3f}  U: {updated}):\n{weights}\n")
+            print(f"uid {uid} (vT: {vtrust:.3f}  U: {updated})")
+            if args.verbose:
+                print(f"{weights}\n")
         print("\n")
 
 
