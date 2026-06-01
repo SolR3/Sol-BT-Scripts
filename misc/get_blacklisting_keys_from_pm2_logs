@@ -60,6 +60,9 @@ def main(args):
         os.path.expanduser(args.json_file)
     )
 
+    curr_time_formatted = time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"\n{curr_time_formatted}  -  Finding blacklisting miners")
+
     curr_time = int(time.time())
     for logfile in glob.glob(f"{logfile_prefix}*.log"):
         if curr_time - int(os.path.getmtime(logfile)) > logfile_age:
