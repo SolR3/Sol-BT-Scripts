@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+
+import argparse
+import glob
+import json
+import os
+import re
+import time
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--logfile-prefix",
+        required=True,
+        help="The log file prefix. All log files with this prefix will be searched. "
+             "For example, sn32 log prefix: 'llm-detection-validators-main-process-'. "
+             "By default it assumes that the files are in the ~/.pm2/logs folder. If "
+             "that happens to not be the case then pass an absolute path to this arg."
+        )
+
+    parser.add_argument(
+        "--logfile-age",
+        type=float,
+        default=2.4,
+        help="The age in hours of the log files to parse. Any log files that haven't "
+             "been modified in longer than thisa amount of time will be ignored. The "
+             "default is 2.4 hours which is 144 minutes, or two epochs."
+        )
+
+    parser.add_argument(
+        "--blacklist-indicator",
+        default="| 403 | Forbidden. Key is blacklisted",
+        help="The string in a log line that indicates that a miner is blacklisting "
+             "our validator."
+        )
+
+    parser.add_argument(
+        "--json-file",
+        default="blacklisting_keys.json",
+        help="The json file to write that contains the list of blacklisting keys. "
+             "By default it assumes the file will be written to the homedir. If that "
+             "happens to not be the case then pass an absolute path to this arg."
+    )
+
+    return parser.parse_args()
+
+
+def main(args):
+    bl_keys = set()
+    blkey_regex = re.compile(r"\| (?P<key>[A-Za-z0-9]{48}) \|")
+    logfile_prefix = os.path.join(
+        os.path.expanduser("~/.pm2/logs"),
+        os.path.expanduser(args.logfile_prefix)
+    )
+    logfile_age = int(args.logfile_age * 3600)
+    jsonfile = os.path.join(
+        os.path.expanduser("~"),
+        os.path.expanduser(args.json_file)
+    )
+
+    curr_time = int(time.time())
+    for logfile in glob.glob(f"{logfile_prefix}*.log"):
+        if curr_time - int(os.path.getmtime(logfile)) > logfile_age:
+            continue
+
+        print(f"checking log file: {logfile}")
+        with open(logfile, "r") as fp:
+            for line in fp.readlines():
+                if args.blacklist_indicator in line:
+                    try:
+                        bl_keys.add(blkey_regex.search(line).group("key"))
+                    except AttributeError:
+                        # Shouldn't get here
+                        pass
+
+    print(f"writing output json file: {jsonfile}")
+    with open(jsonfile, "w") as fp:
+        json.dump(list(bl_keys), fp)
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    main(args)
