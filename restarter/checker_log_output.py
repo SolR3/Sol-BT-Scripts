@@ -76,6 +76,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"Found \d+ blacklisted miners to exclude",  # sn64
                 r"session_id=",  # sn67: scraping something off internet that happens to have "blacklist" in it
+                "tool call completed",  # sn67
                 "Set scores to 0 for blacklisted UIDs",  # sn74
                 "not registered.",  # sn74
                 r"Miner .*is BLACKLISTED",  # sn96
