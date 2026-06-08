@@ -59,30 +59,35 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
             )
             self._do_check_errors = False
 
-        self._blacklist_regex = re.compile("blacklist", flags=re.IGNORECASE)
+        self._blacklist_regexes = [
+            re.compile(match_string, flags=flags) for match_string, flags in (
+                (r"blacklist", re.IGNORECASE),
+                (r"403.+Forbidden", re.NOFLAG),
+            )
+        ]
         self._blacklist_exclude_search_regexes = [
             re.compile(exclude_string) for exclude_string in (
-                "reconnect_blacklist pruned",  # sn2
-                "blacklist_fn took",  # sn8
-                "Set dynamic config",  # sn12: setting some BLACKLIST-related env var
-                "Evicting expired miner blacklists",   # sn12
+                r"reconnect_blacklist pruned",  # sn2
+                r"blacklist_fn took",  # sn8
+                r"Set dynamic config",  # sn12: setting some BLACKLIST-related env var
+                r"Evicting expired miner blacklists",   # sn12
                 r"reddit\.com",  # sn13
                 r"tweet_id=",  # sn13
-                "Judge response unparseable",  # sn15
-                "validator.api.registry_blacklist",  # sn19: module for blacklisting miners
-                "validator.verification.blacklist",  # sn19: module for blacklisting miners
-                "twitter_content_relevance",  # sn22: contains twitter content which could have the word "blacklist" in it
-                "Failed to decode JSON object",  # sn22: contains twitter content which could have the word "blacklist" in it
+                r"Judge response unparseable",  # sn15
+                r"validator\.api\.registry_blacklist",  # sn19: module for blacklisting miners
+                r"validator\.verification\.blacklist",  # sn19: module for blacklisting miners
+                r"twitter_content_relevance",  # sn22: contains twitter content which could have the word "blacklist" in it
+                r"Failed to decode JSON object",  # sn22: contains twitter content which could have the word "blacklist" in it
                 r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"Found \d+ blacklisted miners to exclude",  # sn64
                 r"session_id=",  # sn67: scraping something off internet that happens to have "blacklist" in it
-                "tool call completed",  # sn67
-                "Set scores to 0 for blacklisted UIDs",  # sn74
-                "not registered.",  # sn74
+                r"tool call completed",  # sn67
+                r"Set scores to 0 for blacklisted UIDs",  # sn74
+                r"not registered\.",  # sn74
                 r"Miner .*is BLACKLISTED",  # sn96
-                "Blacklist check timeout",  # sn96
-                "Invalid submission for hotkey",  # sn108: blacklisted miners
-                "hotkey_not_in_metagraph.",  # sn128: blacklisted miners
+                r"Blacklist check timeout",  # sn96
+                r"Invalid submission for hotkey",  # sn108: blacklisted miners
+                r"hotkey_not_in_metagraph\.",  # sn128: blacklisted miners
             )
         ]
         self._blacklist_exclude_match_regexes = [
@@ -107,34 +112,36 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
             )
             return
 
-        if self._blacklist_regex.search(log_line):
-            self._log_info(f"Log line matches the blacklist pattern:\n{log_line}\n")
+        for blacklist_regex in self._blacklist_regexes:
+            if blacklist_regex.search(log_line):
+                self._log_info(f"Log line matches a blacklist pattern:\n{log_line}\n")
 
-            for exclude_regex in self._blacklist_exclude_search_regexes:
-                if exclude_regex.search(log_line):
-                    self._log_info(
-                        "Log line matches a blacklist exclude pattern. "
-                        "Not sending a discord notification."
+                for exclude_regex in self._blacklist_exclude_search_regexes:
+                    if exclude_regex.search(log_line):
+                        self._log_info(
+                            "Log line matches a blacklist exclude pattern. "
+                            "Not sending a discord notification."
+                        )
+                        return
+
+                for exclude_regex in self._blacklist_exclude_match_regexes:
+                    if exclude_regex.match(log_line):
+                        self._log_info(
+                            "Log line matches a blacklist exclude pattern. "
+                            "Not sending a discord notification."
+                        )
+                        return
+
+                self._log_info(
+                        "Log line does not match any blacklist exclude patterns. "
+                        "Sending a discord notification."
                     )
-                    return
-
-            for exclude_regex in self._blacklist_exclude_match_regexes:
-                if exclude_regex.match(log_line):
-                    self._log_info(
-                        "Log line matches a blacklist exclude pattern. "
-                        "Not sending a discord notification."
-                    )
-                    return
-
-            self._log_info(
-                    "Log line does not match any blacklist exclude patterns. "
-                    "Sending a discord notification."
+                send_monitor_notification(
+                    self.log_prefix,
+                    f"{RED_EP} We're being blacklisted on subnet {self._netuid}"
                 )
-            send_monitor_notification(
-                self.log_prefix,
-                f"{RED_EP} We're being blacklisted on subnet {self._netuid}"
-            )
-            self._blacklist_notify_time = current_time
+                self._blacklist_notify_time = current_time
+                return
 
 
 class ValidatorCheckerDockerLogOutput(ValidatorCheckerLogOutput):
