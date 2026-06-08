@@ -62,7 +62,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
         self._blacklist_regexes = [
             re.compile(match_string, flags=flags) for match_string, flags in (
                 (r"blacklist", re.IGNORECASE),
-                (r"403.+Forbidden", re.NOFLAG),
+                (r"403.+Forbidden", 0),  # re.NOFLAG doesn't exist in python 3.10
             )
         ]
         self._blacklist_exclude_search_regexes = [
