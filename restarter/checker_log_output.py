@@ -87,12 +87,13 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"Miner .*is BLACKLISTED",  # sn96
                 r"Blacklist check timeout",  # sn96
                 r"Invalid submission for hotkey",  # sn108: blacklisted miners
+                r"Got task:",  # sn114
                 r"hotkey_not_in_metagraph\.",  # sn128: blacklisted miners
             )
         ]
         self._blacklist_exclude_match_regexes = [
             re.compile(f"^{exclude_string}$") for exclude_string in (
-                "blacklist:",
+                r"blacklist:",
             )
         ]
 
