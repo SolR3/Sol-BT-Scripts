@@ -78,6 +78,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"validator\.verification\.blacklist",  # sn19: module for blacklisting miners
                 r"twitter_content_relevance",  # sn22: contains twitter content which could have the word "blacklist" in it
                 r"Failed to decode JSON object",  # sn22: contains twitter content which could have the word "blacklist" in it
+                r"Verdict:",  # sn22: more twitter stuff
                 r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"Found \d+ blacklisted miners to exclude",  # sn64
                 r"session_id=",  # sn67: scraping something off internet that happens to have "blacklist" in it
