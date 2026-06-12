@@ -7,7 +7,7 @@ import tempfile
 import bittensor
 
 # Local imports
-from .constants import RED_QM, RED_X
+from .constants import RED_QM
 from .utils import (
     get_pm2_log_output_wait_timer,
     restart_lock,
@@ -20,21 +20,9 @@ class ValidatorChecker:
         self._netuid = options.netuid
         self._discord_notify = options.discord_notify
 
-        try:
-            self._init_restart_stuff(options)
-            self._init_setup(options)
-            self._run()
-
-        except Exception as err:
-            import traceback
-            traceback.print_exc()
-            self._log_error(f"Error: {err}")
-
-            send_monitor_notification(
-                self.log_prefix,
-                f"{RED_X} restarter check \"{self.log_prefix}\" "
-                f"failed on subnet {self._netuid}"
-            )
+        self._init_restart_stuff(options)
+        self._init_setup(options)
+        self._run()
 
     @classmethod
     def _log_info(cls, message):

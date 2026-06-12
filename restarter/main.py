@@ -61,7 +61,18 @@ class RestartChecker:
 
 
 def _run_checker(checker_class, options):
-    checker_class(options)
+    try:
+        checker_class(options)
+    except Exception as exc:
+        import traceback
+
+        traceback.print_exc()
+        checker_class._log_error(f"Error: {exc}")
+        send_monitor_notification(
+            checker_class.log_prefix,
+            f"{RED_X} restarter check \"{checker_class.log_prefix}\" "
+            f"failed on subnet {options.netuid}"
+        )
 
 
 def check_for_restarter_code_update(netuid):
