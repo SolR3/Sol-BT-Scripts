@@ -88,7 +88,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"not registered\.",  # sn74
                 r"Miner .*is BLACKLISTED",  # sn96
                 r"Blacklist check timeout",  # sn96
-                r"POST /v1/mpc/dkg/deal HTTP/1\.1",  # sn103: seems innocuous
+                r"POST /v1/mpc/[\w/]+/deal HTTP/1\.1",  # sn103: seems innocuous
                 r"Invalid submission for hotkey",  # sn108: blacklisted miners
                 r"Got task:",  # sn114
                 r"hotkey_not_in_metagraph\.",  # sn128: blacklisted miners
