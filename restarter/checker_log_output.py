@@ -80,6 +80,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"Failed to decode JSON object",  # sn22: contains twitter content which could have the word "blacklist" in it
                 r"Verdict:",  # sn22: more twitter stuff
                 r"loaded \d+ blacklisted hotkeys",  # sn44
+                r"https://photon\.komoot\.io",  # sn54
                 r"tensorauth\.qbittensorlabs\.com/token",  # sn63
                 r"Found \d+ blacklisted miners to exclude",  # sn64
                 r"session_id=",  # sn67: scraping something off internet that happens to have "blacklist" in it
