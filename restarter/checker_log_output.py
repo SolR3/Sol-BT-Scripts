@@ -80,6 +80,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"twitter_content_relevance",  # sn22: contains twitter content which could have the word "blacklist" in it
                 r"Failed to decode JSON object",  # sn22: contains twitter content which could have the word "blacklist" in it
                 r"Verdict:",  # sn22: more twitter stuff
+                r"(GET|POST) /blacklist-xxx HTTP/1\.1",  # sn34
                 r"/plugins/spamx/BlackList\.Examine\.class\.php",  # sn34, sn67
                 r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"https://photon\.komoot\.io",  # sn54
@@ -91,7 +92,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"not registered\.",  # sn74
                 r"Miner .*is BLACKLISTED",  # sn96
                 r"Blacklist check timeout",  # sn96
-                r"POST /v1/mpc/[\w/]+/deal HTTP/1\.1",  # sn103: seems innocuous
+                r"(GET|POST) /v1/mpc/[\w/]+/deal HTTP/1\.1",  # sn103: seems innocuous
                 r"Invalid submission for hotkey",  # sn108: blacklisted miners
                 r"Got task:",  # sn114
                 r"hotkey_not_in_metagraph\.",  # sn128: blacklisted miners
