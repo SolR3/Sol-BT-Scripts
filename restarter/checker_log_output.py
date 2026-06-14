@@ -68,6 +68,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
         self._blacklist_exclude_search_regexes = [
             re.compile(exclude_string) for exclude_string in (
                 r"reconnect_blacklist pruned",  # sn2
+                r"UnknownSynapseError",  # sn7, sn74, sn128
                 r"blacklist_fn took",  # sn8
                 r"Set dynamic config",  # sn12: setting some BLACKLIST-related env var
                 r"Evicting expired miner blacklists",   # sn12
@@ -79,6 +80,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"twitter_content_relevance",  # sn22: contains twitter content which could have the word "blacklist" in it
                 r"Failed to decode JSON object",  # sn22: contains twitter content which could have the word "blacklist" in it
                 r"Verdict:",  # sn22: more twitter stuff
+                r"/plugins/spamx/BlackList\.Examine\.class\.php",  # sn34, sn67
                 r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"https://photon\.komoot\.io",  # sn54
                 r"tensorauth\.qbittensorlabs\.com/token",  # sn63
