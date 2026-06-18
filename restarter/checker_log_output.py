@@ -43,12 +43,6 @@ class ValidatorCheckerLogOutputFactory(ValidatorChecker):
 class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
 
     def _init_setup(self, options, process_name):
-        # Don't really need a wait timer for this since this is the only
-        # thread that's dealing with the blacklisting notify wait time.
-        # Just store the date at the time of notification and check that instead.
-        # self._blacklist_wait_timer = None
-        # self._blacklist_wait_event = threading.Event()
-
         self._do_check_errors = options.do_check_errors
         self._do_check_blacklist = options.do_check_blacklist_logs
 
@@ -58,6 +52,12 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 "Not checking for restart patterns."
             )
             self._do_check_errors = False
+
+        # Ignore any lines longer than this as it can be safely assumed that any log lines longer
+        # than this that contain blacklist patterns are just verbose logs of code/text/etc. that
+        # just happen to contain the word "blacklist" in them. This is easier than trying to
+        # determine an exclude pattern for these verbose logs.
+        self._blacklist_log_max_length = 500
 
         self._blacklist_regexes = [
             re.compile(match_string, flags=flags) for match_string, flags in (
@@ -92,7 +92,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"not registered\.",  # sn74
                 r"Miner .*is BLACKLISTED",  # sn96
                 r"Blacklist check timeout",  # sn96
-                r"(GET|POST) /v1/mpc/[\w/]+/deal HTTP/1\.1",  # sn103: seems innocuous
+                r"(GET|POST) /v1/mpc/[\w/]+ HTTP/1\.1",  # sn103: seems innocuous
                 r"Invalid submission for hotkey",  # sn108: blacklisted miners
                 r"Got task:",  # sn114
                 r"hotkey_not_in_metagraph\.",  # sn128: blacklisted miners
@@ -123,6 +123,13 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
         for blacklist_regex in self._blacklist_regexes:
             if blacklist_regex.search(log_line):
                 self._log_info(f"Log line matches a blacklist pattern:\n{log_line}\n")
+
+                if len(log_line) > self._blacklist_log_max_length:
+                    self._log_info(
+                        f"Log line is longer than {self._blacklist_log_max_length} "
+                        "characters. Not sending a discord notification.",
+                    )
+                    return
 
                 for exclude_regex in self._blacklist_exclude_search_regexes:
                     if exclude_regex.search(log_line):
