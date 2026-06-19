@@ -36,13 +36,9 @@ class ValidatorCheckerGitUpdateBase(ValidatorChecker):
         # Get the repo path from the current working directory
         git_cmd = "git rev-parse --show-toplevel"
         try:
-            process = subprocess.run(
-                shlex.split(git_cmd), check=True, stdout=subprocess.PIPE
-            )
+            process = subprocess.run(shlex.split(git_cmd), check=True, stdout=subprocess.PIPE)
         except subprocess.CalledProcessError:
-            self._log_warning(
-                f"Current working directory '{os.getcwd()}' is not a git repository."
-            )
+            self.log_warning(f"Current working directory '{os.getcwd()}' is not a git repository.")
             return []
 
         cwd_repo_path = process.stdout.decode().strip()
@@ -54,16 +50,16 @@ class ValidatorCheckerGitUpdateBase(ValidatorChecker):
             process = subprocess.run(shlex.split(git_cmd), check=True, stdout=subprocess.PIPE)
         except subprocess.CalledProcessError as exc:
             # Should never ever get here
-            self._log_warning(f"Could not find restarter git repo from path '{restarter_dir}': {exc}")
+            self.log_warning(f"Could not find restarter git repo from path '{restarter_dir}': {exc}")
         else:
             restarter_repo_path = process.stdout.decode().strip()
             if cwd_repo_path == restarter_repo_path:
-                self._log_warning(
+                self.log_warning(
                     f"Current working directory repo path is the restarter repo path: '{cwd_repo_path}'"
                 )
                 return []
 
-        self._log_info(f"Found repo path from current working directory: {cwd_repo_path}")
+        self.log_info(f"Found repo path from current working directory: {cwd_repo_path}")
         return [cwd_repo_path]
 
 
@@ -84,15 +80,11 @@ class ValidatorCheckerGitUpdateBase(ValidatorChecker):
                 pm2_cwd = pm2_process["pm2_env"]["pm_cwd"]
                 git_cmd = f"git -C {pm2_cwd} rev-parse --show-toplevel"
                 try:
-                    process = subprocess.run(
-                        shlex.split(git_cmd), check=True, stdout=subprocess.PIPE
-                    )
+                    process = subprocess.run(shlex.split(git_cmd), check=True, stdout=subprocess.PIPE)
                 except subprocess.CalledProcessError:
                     continue
                 repo_path = process.stdout.decode().strip()
-                self._log_info(
-                    f"Found repo path from '{pm2_name}' pm2 process: {repo_path}"
-                )
+                self.log_info(f"Found repo path from '{pm2_name}' pm2 process: {repo_path}")
                 repo_paths.add(repo_path)
 
         return list(repo_paths)
@@ -116,40 +108,32 @@ class ValidatorCheckerGitUpdateBase(ValidatorChecker):
             )
             git_cmd = f"git -C {cd_dir} rev-parse --show-toplevel"
             try:
-                process = subprocess.run(
-                    shlex.split(git_cmd), check=True, stdout=subprocess.PIPE
-                )
+                process = subprocess.run(shlex.split(git_cmd), check=True, stdout=subprocess.PIPE)
             except subprocess.CalledProcessError:
                 continue
             repo_path = process.stdout.decode().strip()
-            self._log_info(
-                f"Found repo path from {restart_script} script: {repo_path}"
-            )
+            self.log_info(f"Found repo path from {restart_script} script: {repo_path}")
             repo_paths.add(repo_path)
 
         return list(repo_paths)
 
     def _run(self):
-        self._log_info("")
-        self._log_info("Checking for code updates.")
-        self._log_info("")
+        self.log_info("")
+        self.log_info("Checking for code updates.")
+        self.log_info("")
         
         if not self._code_repo_paths:
-            self._log_error(
-                "No valid git repo path. Not checking for code updates."
-            )
+            self.log_error("No valid git repo path. Not checking for code updates.")
             return
 
         while True:
             do_restart = False
             for code_repo_path in self._code_repo_paths:
-                self._log_info("")
-                self._log_info(f"Checking repo path: {code_repo_path}")
-                self._log_info("")
+                self.log_info("")
+                self.log_info(f"Checking repo path: {code_repo_path}")
+                self.log_info("")
                 if not os.path.isdir(code_repo_path):
-                    self._log_error(
-                        f"Repo directory path does not exist: {code_repo_path}"
-                    )
+                    self.log_error(f"Repo directory path does not exist: {code_repo_path}")
                     continue
 
                 git_command = (
@@ -172,7 +156,7 @@ class ValidatorCheckerGitUpdateBase(ValidatorChecker):
                 )
 
             sleep_interval = 900  # 15 minutes
-            self._log_info(f"Sleeping for {sleep_interval} seconds.")
+            self.log_info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
 
     def _check_code_repo(self, *args, **kwargs):
@@ -189,13 +173,9 @@ class ValidatorCheckerGitUpdateCommits(ValidatorCheckerGitUpdateBase):
         # the code was manually pulled while we were waiting. This ensures that
         # we are always comparing the correct commits.
         try:
-            process = subprocess.run(
-                shlex.split(get_cmd), check=True, stdout=subprocess.PIPE
-            )
+            process = subprocess.run(shlex.split(get_cmd), check=True, stdout=subprocess.PIPE)
         except subprocess.CalledProcessError as exc:
-            self._log_error(
-                f"'{get_cmd}' command failed with error: {exc}"
-            )
+            self.log_error(f"'{get_cmd}' command failed with error: {exc}")
             raise GitUpdateError
 
         current_commit = process.stdout.decode().strip()
@@ -203,31 +183,25 @@ class ValidatorCheckerGitUpdateCommits(ValidatorCheckerGitUpdateBase):
         try:
             subprocess.run(shlex.split(pull_cmd), check=True)
         except subprocess.CalledProcessError as exc:
-            self._log_error(
-                f"'{pull_cmd}' command failed with error: {exc}"
-            )
+            self.log_error(f"'{pull_cmd}' command failed with error: {exc}")
             raise GitUpdateError
 
         try:
-            process = subprocess.run(
-                shlex.split(get_cmd), check=True, stdout=subprocess.PIPE
-            )
+            process = subprocess.run(shlex.split(get_cmd), check=True, stdout=subprocess.PIPE)
         except subprocess.CalledProcessError as exc:
-            self._log_error(
-                f"'{get_cmd}' command failed with error: {exc}"
-            )
+            self.log_error(f"'{get_cmd}' command failed with error: {exc}")
             raise GitUpdateError
 
         new_commit = process.stdout.decode().strip()
 
-        self._log_info("")
-        self._log_info(f"Current commit: {current_commit}")
-        self._log_info(f"New commit: {new_commit}")
+        self.log_info("")
+        self.log_info(f"Current commit: {current_commit}")
+        self.log_info(f"New commit: {new_commit}")
         if current_commit != new_commit:
-            self._log_info("Commits changed.")
+            self.log_info("Commits changed.")
             return True
 
-        self._log_info("Commits are the same. Doing nothing.")
+        self.log_info("Commits are the same. Doing nothing.")
         return False
 
 
@@ -246,83 +220,61 @@ class ValidatorCheckerGitUpdateTags(ValidatorCheckerGitUpdateBase):
         try:
             subprocess.run(shlex.split(fetch_cmd), check=True)
         except subprocess.CalledProcessError as exc:
-            self._log_error(
-                f"'{fetch_cmd}' command failed with error: {exc}"
-            )
+            self.log_error(f"'{fetch_cmd}' command failed with error: {exc}")
             raise GitUpdateError
 
         try:
-            process = subprocess.run(
-                shlex.split(current_cmd), check=True, stdout=subprocess.PIPE
-            )
+            process = subprocess.run(shlex.split(current_cmd), check=True, stdout=subprocess.PIPE)
         except subprocess.CalledProcessError as exc:
-            self._log_error(
-                f"'{current_cmd}' command failed with error: {exc}"
-            )
+            self.log_error(f"'{current_cmd}' command failed with error: {exc}")
             raise GitUpdateError
 
         current_rev = process.stdout.decode().strip()
 
         try:
             get_current_cmd = f"{get_cmd} {current_rev}"
-            process = subprocess.run(
-                shlex.split(get_current_cmd), check=True, stdout=subprocess.PIPE
-            )
+            process = subprocess.run(shlex.split(get_current_cmd), check=True, stdout=subprocess.PIPE)
         except subprocess.CalledProcessError as exc:
-            self._log_error(
-                f"'{get_current_cmd}' command failed with error: {exc}"
-            )
+            self.log_error(f"'{get_current_cmd}' command failed with error: {exc}")
             raise GitUpdateError
 
         current_tag = process.stdout.decode().strip()
 
         try:
-            process = subprocess.run(
-                shlex.split(latest_cmd), check=True, stdout=subprocess.PIPE
-            )
+            process = subprocess.run(shlex.split(latest_cmd), check=True, stdout=subprocess.PIPE)
         except subprocess.CalledProcessError as exc:
-            self._log_error(
-                f"'{latest_cmd}' command failed with error: {exc}"
-            )
+            self.log_error(f"'{latest_cmd}' command failed with error: {exc}")
             raise GitUpdateError
 
         latest_rev = process.stdout.decode().strip()
 
         try:
             get_latest_cmd = f"{get_cmd} {latest_rev}"
-            process = subprocess.run(
-                shlex.split(get_latest_cmd), check=True, stdout=subprocess.PIPE
-            )
+            process = subprocess.run(shlex.split(get_latest_cmd), check=True, stdout=subprocess.PIPE)
         except subprocess.CalledProcessError as exc:
-            self._log_error(
-                f"'{get_latest_cmd}' command failed with error: {exc}"
-            )
+            self.log_error(f"'{get_latest_cmd}' command failed with error: {exc}")
             raise GitUpdateError
 
         latest_tag = process.stdout.decode().strip()
 
-        self._log_info("")
-        self._log_info(f"Current tag: {current_tag}")
-        self._log_info(f"Latest tag: {latest_tag}")
+        self.log_info("")
+        self.log_info(f"Current tag: {current_tag}")
+        self.log_info(f"Latest tag: {latest_tag}")
         if latest_tag.endswith("-rc"):
-            self._log_info("Latest tag is not a release. Doing nothing.")
+            self.log_info("Latest tag is not a release. Doing nothing.")
             return False
 
         if current_tag == latest_tag:
-            self._log_info("Tags are the same. Doing nothing.")
+            self.log_info("Tags are the same. Doing nothing.")
             return False
 
-        self._log_info("Tags are different.")
+        self.log_info("Tags are different.")
 
         # Check if there are local changes.
         try:
-            process = subprocess.run(
-                shlex.split(stash_check_cmd), check=True, stdout=subprocess.PIPE
-            )
+            process = subprocess.run(shlex.split(stash_check_cmd), check=True, stdout=subprocess.PIPE)
         except subprocess.CalledProcessError as exc:
-            self._log_error(
-                f"'{stash_check_cmd}' command failed with error: {exc}"
-            )
+            self.log_error(f"'{stash_check_cmd}' command failed with error: {exc}")
             raise GitUpdateError
 
         do_stash = bool(process.stdout.decode().strip())
@@ -333,18 +285,14 @@ class ValidatorCheckerGitUpdateTags(ValidatorCheckerGitUpdateBase):
             try:
                 subprocess.run(shlex.split(stash_push_cmd), check=True)
             except subprocess.CalledProcessError as exc:
-                self._log_error(
-                    f"'{stash_push_cmd}' command failed with error: {exc}"
-                )
+                self.log_error(f"'{stash_push_cmd}' command failed with error: {exc}")
                 raise GitUpdateError
 
         try:
             pull_latest_cmd = f"{pull_cmd} {latest_tag}"
             subprocess.run(shlex.split(pull_latest_cmd), check=True)
         except subprocess.CalledProcessError as exc:
-            self._log_error(
-                f"'{pull_latest_cmd}' command failed with error: {exc}"
-            )
+            self.log_error(f"'{pull_latest_cmd}' command failed with error: {exc}")
             raise GitUpdateError
 
         # If there are local changes then we need to unstash the changes
@@ -353,10 +301,8 @@ class ValidatorCheckerGitUpdateTags(ValidatorCheckerGitUpdateBase):
             try:
                 subprocess.run(shlex.split(stash_pop_cmd), check=True)
             except subprocess.CalledProcessError as exc:
-                self._log_error(
-                    f"'{stash_pop_cmd}' command failed with error: {exc}"
-                )
+                self.log_error(f"'{stash_pop_cmd}' command failed with error: {exc}")
                 raise GitUpdateError
 
-        self._log_info("Pulled latest tag.")
+        self.log_info("Pulled latest tag.")
         return True

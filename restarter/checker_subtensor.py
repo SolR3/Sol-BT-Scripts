@@ -69,17 +69,17 @@ class ValidatorCheckerSubtensor(ValidatorChecker):
             network_name = self._local_subtensors[self._local_subtensor_index]
             network = f"ws://subtensor-{network_name}.rizzo.network:9944"
 
-            self._log_info(f"Connecting to subtensor network: {network}")
+            self.log_info(f"Connecting to subtensor network: {network}")
             try:
                 args = [network, self._netuid, self._mp_queue_name]
                 with multiprocessing.Pool(processes=1) as pool:
                     pool.apply(get_metagraph_data, args)
             except Exception as err:
-                self._log_error("")
-                self._log_error(f"Subtensor connection failed on '{network}'")
-                self._log_error(f"{type(err).__name__}: {err}")
-                self._log_error("")
-                self._log_error("Rotating subtensors and trying again.")
+                self.log_error("")
+                self.log_error(f"Subtensor connection failed on '{network}'")
+                self.log_error(f"{type(err).__name__}: {err}")
+                self.log_error("")
+                self.log_error("Rotating subtensors and trying again.")
                 time.sleep(1)
             else:
                 break
@@ -118,9 +118,9 @@ class ValidatorCheckerUpdated(ValidatorCheckerSubtensor):
         self._mp_queue_name = "UPDATED_MP_QUEUE"
 
     def _run(self):
-        self._log_info("")
-        self._log_info("Checking for high Updated values.")
-        self._log_info("")
+        self.log_info("")
+        self.log_info("Checking for high Updated values.")
+        self.log_info("")
 
         default_sleep_time = 4320  # 360 blocks
 
@@ -128,52 +128,52 @@ class ValidatorCheckerUpdated(ValidatorCheckerSubtensor):
             metagraph_data = self._get_metagraph_data()
             rizzo_uid = self._get_rizzo_uid(metagraph_data)
             if rizzo_uid is None:
-                self._log_warning(
+                self.log_warning(
                     f"Rizzo validator not running for subnet {self._netuid}. "
                 )
-                self._log_info(f"Sleeping for {default_sleep_time} seconds.")
+                self.log_info(f"Sleeping for {default_sleep_time} seconds.")
                 time.sleep(default_sleep_time)
                 continue
 
             rizzo_updated = int(
                 metagraph_data.block - metagraph_data.last_update[rizzo_uid])
-            self._log_info("")
-            self._log_info(f"Rizzo Updated is {rizzo_updated} blocks.")
+            self.log_info("")
+            self.log_info(f"Rizzo Updated is {rizzo_updated} blocks.")
 
             if self._check_for_restart:
                 # If the rizzo updated value is greater than the restart threshold
                 # the do a restart and set _check_for_restart to False.
-                self._log_info("Updated value check for restart is True.")
+                self.log_info("Updated value check for restart is True.")
                 if rizzo_updated >= self._restart_threshold:
-                    self._log_info(f"Updated value {rizzo_updated} "
+                    self.log_info(f"Updated value {rizzo_updated} "
                                    f">= {self._restart_threshold}")
                     self._restart_validator(f"Updated value is {rizzo_updated}")
-                    self._log_info("Setting check for restart to False.")
+                    self.log_info("Setting check for restart to False.")
                     self._check_for_restart = False
                 else:
-                    self._log_info(f"Updated value {rizzo_updated} "
+                    self.log_info(f"Updated value {rizzo_updated} "
                                    f"< {self._restart_threshold}")
-                    self._log_info("Doing nothing.")
+                    self.log_info("Doing nothing.")
             else:
                 # If the rizzo updated value is less than the restart threshold
                 # then set _check_for_restart to True.
-                self._log_info("Updated value Check for restart is False.")
+                self.log_info("Updated value Check for restart is False.")
                 if rizzo_updated < self._restart_threshold:
-                    self._log_info(f"Updated value {rizzo_updated} "
+                    self.log_info(f"Updated value {rizzo_updated} "
                                    f"< {self._restart_threshold}")
-                    self._log_info("Setting check for restart to True.")
+                    self.log_info("Setting check for restart to True.")
                     self._check_for_restart = True
                 else:
-                    self._log_info(f"Updated value {rizzo_updated} "
+                    self.log_info(f"Updated value {rizzo_updated} "
                                    f">= {self._restart_threshold}")
-                    self._log_info("Doing nothing.")
+                    self.log_info("Doing nothing.")
 
             seconds_until_threshold = \
                 (self._restart_threshold - rizzo_updated) * 12
             sleep_interval = (seconds_until_threshold
                               if seconds_until_threshold > 0
                               else default_sleep_time)
-            self._log_info(f"Sleeping for {sleep_interval} seconds.")
+            self.log_info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
 
 
@@ -193,9 +193,9 @@ class ValidatorCheckerVTrust(ValidatorCheckerSubtensor):
         self._mp_queue_name = "VTRUST_MP_QUEUE"
 
     def _run(self):
-        self._log_info("")
-        self._log_info("Checking for low vTrust values.")
-        self._log_info("")
+        self.log_info("")
+        self.log_info("Checking for low vTrust values.")
+        self.log_info("")
 
         sleep_interval = 4320  # 360 blocks
 
@@ -203,46 +203,46 @@ class ValidatorCheckerVTrust(ValidatorCheckerSubtensor):
             metagraph_data = self._get_metagraph_data()
             rizzo_uid = self._get_rizzo_uid(metagraph_data)
             if rizzo_uid is None:
-                self._log_warning(
+                self.log_warning(
                     f"Rizzo validator not running for subnet {self._netuid}. "
                 )
-                self._log_info(f"Sleeping for {sleep_interval} seconds.")
+                self.log_info(f"Sleeping for {sleep_interval} seconds.")
                 time.sleep(sleep_interval)
                 continue
 
             rizzo_vtrust = metagraph_data.Tv[rizzo_uid]
             vtrust_str = f"{rizzo_vtrust:.5f}"
 
-            self._log_info("")
-            self._log_info(f"Rizzo vTrust is {vtrust_str}")
+            self.log_info("")
+            self.log_info(f"Rizzo vTrust is {vtrust_str}")
 
             if self._check_for_restart:
                 # If the rizzo vTrust value is less than the restart threshold
                 # the do a restart and set _check_for_restart to False.
-                self._log_info("vTrust value check for restart is True.")
+                self.log_info("vTrust value check for restart is True.")
                 if rizzo_vtrust < self._restart_threshold:
-                    self._log_info(f"vTrust value {vtrust_str} "
+                    self.log_info(f"vTrust value {vtrust_str} "
                                    f"< {self._restart_threshold}")
                     self._restart_validator(f"vTrust value is {vtrust_str}")
-                    self._log_info("Setting check for restart to False.")
+                    self.log_info("Setting check for restart to False.")
                     self._check_for_restart = False
                 else:
-                    self._log_info(f"vTrust value {vtrust_str} "
+                    self.log_info(f"vTrust value {vtrust_str} "
                                    f">= {self._restart_threshold}")
-                    self._log_info("Doing nothing.")
+                    self.log_info("Doing nothing.")
             else:
                 # If the rizzo vTrust value is greater than the restart threshold
                 # then set _check_for_restart to True.
-                self._log_info("vTrust value Check for restart is False.")
+                self.log_info("vTrust value Check for restart is False.")
                 if rizzo_vtrust >= self._restart_threshold:
-                    self._log_info(f"vTrust value {vtrust_str} "
+                    self.log_info(f"vTrust value {vtrust_str} "
                                    f">= {self._restart_threshold}")
-                    self._log_info("Setting check for restart to True.")
+                    self.log_info("Setting check for restart to True.")
                     self._check_for_restart = True
                 else:
-                    self._log_info(f"vTrust value {vtrust_str} "
+                    self.log_info(f"vTrust value {vtrust_str} "
                                    f"< {self._restart_threshold}")
-                    self._log_info("Doing nothing.")
+                    self.log_info("Doing nothing.")
 
-            self._log_info(f"Sleeping for {sleep_interval} seconds.")
+            self.log_info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)

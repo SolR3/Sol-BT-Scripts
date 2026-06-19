@@ -32,10 +32,10 @@ class ValidatorCheckerLogOutputFactory(ValidatorChecker):
 
         class_netuid_obj = globals().get(class_netuid)
         if class_netuid_obj:
-            cls._log_info(f"Running log output checker class: {class_netuid}")
+            cls.log_info(f"Running log output checker class: {class_netuid}")
             return super().__new__(class_netuid_obj)
 
-        cls._log_info(f"Running log output checker class: {class_base}")
+        cls.log_info(f"Running log output checker class: {class_base}")
         class_base_obj = globals()[class_base]
         return super().__new__(class_base_obj)
 
@@ -47,7 +47,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
         self._do_check_blacklist = options.do_check_blacklist_logs
 
         if not self._generic_patterns and not self._subnet_patterns:
-            self._log_warning(
+            self.log_warning(
                 f"No log patterns defined for subnet {self._netuid}. "
                 "Not checking for restart patterns."
             )
@@ -115,7 +115,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
             self._blacklist_notify_time and 
             current_time < (self._blacklist_notify_time + self._blacklist_wait_time)
         ):
-            self._log_debug(
+            self.log_debug(
                 f"({self._process_name}) Log line blacklist check skipped. "
                 "Too soon since last notification."
             )
@@ -123,10 +123,10 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
 
         for blacklist_regex in self._blacklist_regexes:
             if blacklist_regex.search(log_line):
-                self._log_info(f"Log line matches a blacklist pattern:\n{log_line}\n")
+                self.log_info(f"Log line matches a blacklist pattern:\n{log_line}\n")
 
                 if len(log_line) > self._blacklist_log_max_length:
-                    self._log_info(
+                    self.log_info(
                         f"Log line is longer than {self._blacklist_log_max_length} "
                         "characters. Not sending a discord notification.",
                     )
@@ -134,7 +134,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
 
                 for exclude_regex in self._blacklist_exclude_search_regexes:
                     if exclude_regex.search(log_line):
-                        self._log_info(
+                        self.log_info(
                             "Log line matches a blacklist exclude pattern. "
                             "Not sending a discord notification."
                         )
@@ -142,13 +142,13 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
 
                 for exclude_regex in self._blacklist_exclude_match_regexes:
                     if exclude_regex.match(log_line):
-                        self._log_info(
+                        self.log_info(
                             "Log line matches a blacklist exclude pattern. "
                             "Not sending a discord notification."
                         )
                         return
 
-                self._log_info(
+                self.log_info(
                         "Log line does not match any blacklist exclude patterns. "
                         "Sending a discord notification."
                     )
@@ -171,20 +171,20 @@ class ValidatorCheckerDockerLogOutput(ValidatorCheckerLogOutput):
         self._docker_container = options.docker_container
 
     def _run(self):
-        self._log_info("")
-        self._log_info("Checking log output.")
-        self._log_info("")
+        self.log_info("")
+        self.log_info("Checking log output.")
+        self.log_info("")
 
         if not self._do_check_errors and not self._do_check_blacklist:
-            self._log_warning(
+            self.log_warning(
                 "Restart patterns and blacklising checks are both False. Nothing to do."
             )
             return
 
         if self._do_check_errors:
-            self._log_info("Checking for errors.")
+            self.log_info("Checking for errors.")
         if self._do_check_blacklist:
-            self._log_info("Checking for miner blacklisting.")
+            self.log_info("Checking for miner blacklisting.")
 
         log_regexes = []
         for log_pattern in self._generic_patterns + self._subnet_patterns:
@@ -193,7 +193,7 @@ class ValidatorCheckerDockerLogOutput(ValidatorCheckerLogOutput):
         command_str = " ".join(command)
 
         while True:
-            self._log_info(f"Launching process: \"{command_str}\"")
+            self.log_info(f"Launching process: \"{command_str}\"")
 
             mfd, sfd = pty.openpty()
             process = subprocess.Popen(
@@ -205,7 +205,7 @@ class ValidatorCheckerDockerLogOutput(ValidatorCheckerLogOutput):
                     log_line = master.readline()
                 except:
                     # The process exited.
-                    self._log_info(f"Process exited: \"{command_str}\"")
+                    self.log_info(f"Process exited: \"{command_str}\"")
                     break
                 else:
                     if self._do_check_blacklist:
@@ -222,7 +222,7 @@ class ValidatorCheckerDockerLogOutput(ValidatorCheckerLogOutput):
                         if match:
                             do_restart = True
                             pattern = match.group()
-                            self._log_info(
+                            self.log_info(
                                 f"Log line matches a restart pattern: \"{pattern}\"\n"
                                 f"{log_line}\n")
                             self._restart_validator(
@@ -232,11 +232,11 @@ class ValidatorCheckerDockerLogOutput(ValidatorCheckerLogOutput):
                     if do_restart:
                         break
 
-            self._log_info(f"Killing process: \"{command_str}\"")
+            self.log_info(f"Killing process: \"{command_str}\"")
             process.kill()
             master.close()
             sleep_time = 60
-            self._log_info(f"Sleeping {sleep_time} seconds.")
+            self.log_info(f"Sleeping {sleep_time} seconds.")
             time.sleep(sleep_time)
 
 
@@ -266,7 +266,7 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
                     interval=self._wait_time, function=self._unset_wait_event
                 )
                 self._wait_timer.start()
-                ValidatorCheckerPm2LogOutput._log_info(
+                ValidatorCheckerPm2LogOutput.log_info(
                     f"Stopping pm2 log patterns check. Waiting {self._wait_time} "
                     "seconds after restart to continue checking log patterns."
                 )
@@ -274,7 +274,7 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
         def _unset_wait_event(self):
             with self._timer_lock:
                 self._wait_event.clear()
-                ValidatorCheckerPm2LogOutput._log_info(
+                ValidatorCheckerPm2LogOutput.log_info(
                     "Continuing pm2 log patterns check."
                 )
 
@@ -285,20 +285,20 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
         self._restart_wait_time = options.log_errors_restart_wait_time * 60
 
     def _run(self):
-        self._log_info("")
-        self._log_info("Checking log output.")
-        self._log_info("")
+        self.log_info("")
+        self.log_info("Checking log output.")
+        self.log_info("")
 
         if not self._do_check_errors and not self._do_check_blacklist:
-            self._log_warning(
+            self.log_warning(
                 "Restart patterns and blacklising checks are both False. Nothing to do."
             )
             return
 
         if self._do_check_errors:
-            self._log_info("Checking for errors.")
+            self.log_info("Checking for errors.")
         if self._do_check_blacklist:
-            self._log_info("Checking for miner blacklisting.")
+            self.log_info("Checking for miner blacklisting.")
 
         self._create_pm2_log_output_wait_timer(self._restart_wait_time)
 
@@ -310,7 +310,7 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
 
         while True:
             _initial_log_lines = 0
-            self._log_info(f"Launching process: \"{command_str}\"")
+            self.log_info(f"Launching process: \"{command_str}\"")
 
             mfd, sfd = pty.openpty()
             process = subprocess.Popen(
@@ -322,7 +322,7 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
                     log_line = master.readline()
                 except:
                     # The process exited.
-                    self._log_info(f"Process exited: \"{command_str}\"")
+                    self.log_info(f"Process exited: \"{command_str}\"")
                     break
                 else:
                     if self._do_check_blacklist:
@@ -335,14 +335,14 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
                     # Check whether or not restart patterns should be checked
                     if _initial_log_lines < self._skip_initial_log_lines:
                         _initial_log_lines += 1
-                        self._log_debug(f"{_initial_log_lines=}")
+                        self.log_debug(f"{_initial_log_lines=}")
                         continue
                     elif _initial_log_lines == self._skip_initial_log_lines:
                         _initial_log_lines += 1
-                        self._log_info("Starting log patterns check.")
+                        self.log_info("Starting log patterns check.")
 
                     if get_pm2_log_output_wait_timer().get_waiting_status():
-                        self._log_debug(
+                        self.log_debug(
                             f"({self._pm2_process}) Log line skipped. "
                             "In waiting mode."
                         )
@@ -353,7 +353,7 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
                         match = log_regex.search(log_line)
                         if match:
                             pattern = match.group()
-                            self._log_info(
+                            self.log_info(
                                 f"Log line matches a restart pattern: \"{pattern}\"\n"
                                 f"{log_line}\n")
                             self._restart_validator(
@@ -361,11 +361,11 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
                             )
                             break
 
-            self._log_info(f"Killing process: \"{command_str}\"")
+            self.log_info(f"Killing process: \"{command_str}\"")
             process.kill()
             master.close()
             sleep_time = 15
-            self._log_info(f"Sleeping {sleep_time} seconds.")
+            self.log_info(f"Sleeping {sleep_time} seconds.")
             time.sleep(sleep_time)
 
     @classmethod

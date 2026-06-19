@@ -25,19 +25,19 @@ class ValidatorChecker:
         self._run()
 
     @classmethod
-    def _log_info(cls, message):
+    def log_info(cls, message):
         bittensor.logging.info(f"{cls.log_prefix}: {message}")
 
     @classmethod
-    def _log_error(cls, message):
+    def log_error(cls, message):
         bittensor.logging.error(f"{cls.log_prefix}: {message}")
 
     @classmethod
-    def _log_warning(cls, message):
+    def log_warning(cls, message):
         bittensor.logging.warning(f"{cls.log_prefix}: {message}")
 
     @classmethod
-    def _log_debug(cls, message):
+    def log_debug(cls, message):
         bittensor.logging.debug(f"{cls.log_prefix}: {message}")
 
     def _init_setup(self, options):
@@ -66,8 +66,8 @@ class ValidatorChecker:
         # currently running a restart so just return.
         # Otherwise aquire the restart_lock and run a restart.
         if restart_lock.locked():
-            self._log_info(f"Subnet {self._netuid} is currently restarting. "
-                           f"Skipping retart for: {description}.")
+            self.log_info(f"Subnet {self._netuid} is currently restarting. "
+                          f"Skipping retart for: {description}.")
             return
 
         with restart_lock:
@@ -77,18 +77,18 @@ class ValidatorChecker:
             self._do_restart(description, force_notify)
 
     def _do_restart(self, description, force_notify):
-        self._log_info(f"Restarting subnet {self._netuid}: {description}.")
-        self._log_info(f"Running script: {self._restart_script}")
+        self.log_info(f"Restarting subnet {self._netuid}: {description}.")
+        self.log_info(f"Running script: {self._restart_script}")
 
         if self._restart_venv:
-            self._log_info(f"Running in venv: {self._restart_venv}")
+            self.log_info(f"Running in venv: {self._restart_venv}")
 
             fd, restart_script = tempfile.mkstemp(dir=self._restart_dir,
                 prefix = f"restart_{self._netuid}_", suffix=".sh")
             os.close(fd)
             os.chmod(restart_script, 0o700)
 
-            self._log_info(f"Packaging venv and script into {restart_script}")
+            self.log_info(f"Packaging venv and script into {restart_script}")
             with open(restart_script, "w") as fd:
                 venv_activate = os.path.join(self._restart_venv, "bin/activate")
                 fd.write("#!/bin/bash\n"
@@ -103,14 +103,13 @@ class ValidatorChecker:
             restart_script = None
 
         restart_cmd_str = " ".join(restart_cmd)
-        self._log_info(f"Running command: '{restart_cmd_str}'")
+        self.log_info(f"Running command: '{restart_cmd_str}'")
 
         try:
             subprocess.run(restart_cmd, check=True)
 
         except subprocess.CalledProcessError as exc:
-            self._log_error(
-                f"'{restart_cmd_str}' command failed with error: {exc}")
+            self.log_error(f"'{restart_cmd_str}' command failed with error: {exc}")
             self._send_restart_monitor_notification(
                 f"{RED_QM} Possibly failed to restart subnet {self._netuid} - {description}",
                 force_notify
@@ -121,7 +120,7 @@ class ValidatorChecker:
             if restart_script:
                 os.unlink(restart_script)
 
-        self._log_info(f"Subnet '{self._netuid}' successfully restarted.")
+        self.log_info(f"Subnet '{self._netuid}' successfully restarted.")
         self._send_restart_monitor_notification(
             f"Successfully restarted on subnet {self._netuid} - {description}",
             force_notify
@@ -131,7 +130,7 @@ class ValidatorChecker:
 
     def _send_restart_monitor_notification(self, message, force_notify):
         if not force_notify and not self._discord_notify:
-            self._log_info("Not sending discord monitor notification.")
+            self.log_info("Not sending discord monitor notification.")
             return
 
         send_monitor_notification(self.log_prefix, message)

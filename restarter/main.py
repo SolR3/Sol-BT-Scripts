@@ -67,7 +67,7 @@ def _run_checker(checker_class, options):
         import traceback
 
         traceback.print_exc()
-        checker_class._log_error(f"Error: {exc}")
+        checker_class.log_error(f"Error: {exc}")
         send_monitor_notification(
             checker_class.log_prefix,
             f"{RED_X} restarter check \"{checker_class.log_prefix}\" "
