@@ -172,7 +172,7 @@ class ValidatorCheckerDockerLogOutput(ValidatorCheckerLogOutput):
 
     def _run(self):
         self.log_info("")
-        self.log_info("Checking log output.")
+        self.log_info(f"Checking log output for container: {self._docker_container}.")
         self.log_info("")
 
         if not self._do_check_errors and not self._do_check_blacklist:
@@ -286,7 +286,7 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
 
     def _run(self):
         self.log_info("")
-        self.log_info("Checking log output.")
+        self.log_info(f"Checking log output for process: {self._pm2_process}.")
         self.log_info("")
 
         if not self._do_check_errors and not self._do_check_blacklist:

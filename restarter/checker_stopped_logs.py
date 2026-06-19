@@ -24,7 +24,7 @@ class ValidatorCheckerDockerStoppedLogs(ValidatorChecker):
             return
 
         self.log_info("")
-        self.log_info("Checking for stopped logs.")
+        self.log_info(f"Checking for stopped logs for container: {self._docker_container}.")
         self.log_info("")
 
         client = docker.from_env()
@@ -93,21 +93,34 @@ class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
 
     def _run(self):
         self.log_info("")
-        self.log_info("Checking for stopped logs.")
+        self.log_info(f"Checking for stopped logs for process: {self._pm2_process}.")
         self.log_info("")
 
         while True:
+            out_log_file = None
+            error_log_file = None
+
             process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
             pm2_output = json.loads(process.stdout)
             for pm2_process in pm2_output:
                 if pm2_process["name"] == self._pm2_process:
-                    out_log_file =  pm2_process["pm2_env"]["pm_out_log_path"]
-                    error_log_file =  pm2_process["pm2_env"]["pm_err_log_path"]
+                    out_log_file = pm2_process["pm2_env"]["pm_out_log_path"]
+                    error_log_file = pm2_process["pm2_env"]["pm_err_log_path"]
                     break
 
+            if not out_log_file:
+                raise Exception(f"Could not find out log file for pm2 process {self._pm2_process}")
+            if not error_log_file:
+                raise Exception(f"Could not find error log file for pm2 process {self._pm2_process}")
+
+            if not os.path.isfile(out_log_file):
+                raise Exception(f"Out log file does not exist: {out_log_file}")
+            if not os.path.isfile(error_log_file):
+                raise Exception(f"Error log file does not exist: {error_log_file}")
+
             self.log_info("")
-            self.log_info(f"Out Log file: {out_log_file}")
-            self.log_info(f"Error Log file: {error_log_file}")
+            self.log_info(f"Out log file: {out_log_file}")
+            self.log_info(f"Error log file: {error_log_file}")
 
             out_log_file_mtime = int(os.path.getmtime(out_log_file))
             error_log_file_mtime = int(os.path.getmtime(error_log_file))
