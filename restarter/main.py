@@ -169,6 +169,26 @@ def run(options):
     else:
         bittensor.logging.enable_info()
 
+    # Begin: Temporary. If netuid is 89 then send discord notification with ip address.
+    if options.netuid == 89:
+        import socket
+
+        ip = None
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+        finally:
+            s.close()
+
+        if ip:
+            msg = f"IP address for host running restarter on sn89: {ip}"
+        else:
+            msg = "Could not get IP address for host running restarter on sn89"
+
+        send_monitor_notification(RESTARTER_PREFIX, msg)
+    # End: Temporary.
+
     if not (options.pm2_processes or options.docker_containers):
         if options.do_check_errors:
             log_warning(
