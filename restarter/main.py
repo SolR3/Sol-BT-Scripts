@@ -75,6 +75,37 @@ def _run_checker(checker_class, options):
         )
 
 
+def notify_ip_address(options):
+    # Debug helper function to send a discord notification with the host IP address
+    # for netuids that may be running rogue restarter processes.
+
+    # Populate this with the list of netuids who's restarter processes we want to find.
+    netuids = []
+
+    if options.netuid in netuids:
+        import socket
+
+        ip_address = None
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.connect(("8.8.8.8", 80))
+            ip_address = sock.getsockname()[0]
+        except Exception as exc:
+            import traceback
+
+            traceback.print_exc()
+            log_error(f"Error obtaining host IP address: {exc}")
+        finally:
+            sock.close()
+
+        if ip_address:
+            msg = f"IP address for host running restarter on subnet {options.netuid}: {ip_address}"
+        else:
+            msg = f"Failed to get IP address for host running restarter on subnet {options.netuid}"
+
+        send_monitor_notification(RESTARTER_PREFIX, msg)
+
+
 def check_for_restarter_code_update(netuid):
 
     def send_error(message):
@@ -169,25 +200,7 @@ def run(options):
     else:
         bittensor.logging.enable_info()
 
-    # Begin: Temporary. If netuid is 89 then send discord notification with ip address.
-    if options.netuid == 89:
-        import socket
-
-        ip = None
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-        finally:
-            s.close()
-
-        if ip:
-            msg = f"IP address for host running restarter on sn89: {ip}"
-        else:
-            msg = "Could not get IP address for host running restarter on sn89"
-
-        send_monitor_notification(RESTARTER_PREFIX, msg)
-    # End: Temporary.
+    notify_ip_address(options)
 
     if not (options.pm2_processes or options.docker_containers):
         if options.do_check_errors:
