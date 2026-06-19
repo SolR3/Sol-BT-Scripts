@@ -82,6 +82,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"Verdict:",  # sn22: more twitter stuff
                 r"(GET|POST) /blacklist-xxx HTTP/1\.1",  # sn34
                 r"/plugins/spamx/BlackList\.Examine\.class\.php",  # sn34, sn67
+                r"Retrying in \d+ seconds",  # sn41
                 r"loaded \d+ blacklisted hotkeys",  # sn44
                 r"https://photon\.komoot\.io",  # sn54
                 r"tensorauth\.qbittensorlabs\.com/token",  # sn63
