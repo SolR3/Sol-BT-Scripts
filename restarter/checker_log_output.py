@@ -96,6 +96,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"(GET|POST) /v1/mpc/[\w/]+ HTTP/1\.1",  # sn103: seems innocuous
                 r"Invalid submission for hotkey",  # sn108: blacklisted miners
                 r"Got task:",  # sn114
+                r"https://platform\.thesoma\.ai/validator/submit_swebench_validation_score",  # sn114
                 r"hotkey_not_in_metagraph\.",  # sn128: blacklisted miners
             )
         ]
