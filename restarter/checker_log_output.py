@@ -95,8 +95,9 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"Blacklist unavailable",  # sn78
                 r"Miner .*is BLACKLISTED",  # sn96
                 r"Blacklist check timeout",  # sn96
-                r"(GET|POST) /v1/mpc/[\w/]+ HTTP/1\.1",  # sn103: seems innocuous
+                r"(GET|POST) /v1/[\w/]+ HTTP/1\.1",  # sn103: seems innocuous
                 r"recipient_hotkey=5D7jkdtPJjLv635hUiXFa4cTnZsw7x8CCsd1czj3pk9bz5f7",  # sn103: Kraken's vali hotkey...who knows
+                r"https://minos-r2-proxy\.minos-ai\.workers\.dev",  # sn107
                 r"Invalid submission for hotkey",  # sn108: blacklisted miners
                 r"Got task:",  # sn114
                 r"https://platform\.thesoma\.ai/validator/submit_swebench_validation_score",  # sn114
