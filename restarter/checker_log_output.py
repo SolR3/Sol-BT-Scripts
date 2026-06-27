@@ -91,6 +91,8 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                 r"tool call completed",  # sn67
                 r"Set scores to 0 for blacklisted UIDs",  # sn74
                 r"not registered\.",  # sn74
+                r"Blacklist fetch failed",  # sn78
+                r"Blacklist unavailable",  # sn78
                 r"Miner .*is BLACKLISTED",  # sn96
                 r"Blacklist check timeout",  # sn96
                 r"(GET|POST) /v1/mpc/[\w/]+ HTTP/1\.1",  # sn103: seems innocuous
