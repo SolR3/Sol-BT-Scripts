@@ -8,6 +8,11 @@ import bittensor
 
 # Local imports
 from .checker_base import ValidatorChecker
+from .constants import (
+    RIZZO_COLDKEY,
+    RIZZO_HOTKEYS,
+    MULTI_UID_HOTKEYS,
+)
 
 
 # Multiprocessing Queues
@@ -35,14 +40,6 @@ def get_metagraph_data(network, netuid, mp_queue_name):
 
 class ValidatorCheckerSubtensor(ValidatorChecker):
     # Updated and vTrust checkers only
-
-    _rizzo_coldkey = "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo"
-
-    # This is a fix to handle the subnets on which we're registered on
-    # multiple uids.
-    _multi_uid_hotkeys = {
-        20: "5ExaAP3ENz3bCJufTzWzs6J6dCWuhjjURT8AdZkQ5qA4As2o",
-    }
 
     _local_subtensors = [
         "cali",
@@ -88,16 +85,16 @@ class ValidatorCheckerSubtensor(ValidatorChecker):
         return mp_queue.get()
 
     def _get_rizzo_uid(self, metagraph_data):
-        if metagraph_data.netuid in self._multi_uid_hotkeys:
+        if metagraph_data.netuid in MULTI_UID_HOTKEYS:
             try:
                 return metagraph_data.hotkeys.index(
-                    self._multi_uid_hotkeys[metagraph_data.netuid]
+                    RIZZO_HOTKEYS[metagraph_data.netuid]
                 )
             except ValueError:
                 return None
 
         try:
-            return metagraph_data.coldkeys.index(self._rizzo_coldkey)
+            return metagraph_data.coldkeys.index(RIZZO_COLDKEY)
         except ValueError:
             return None
 

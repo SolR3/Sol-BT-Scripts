@@ -9,7 +9,11 @@ import time
 
 # Local imports
 from .checker_base import ValidatorChecker
-from .constants import RED_EP
+from .constants import (
+    RED_EP,
+    RIZZO_COLDKEY,
+    RIZZO_HOTKEYS,
+)
 from .utils import (
     get_pm2_log_output_wait_timer,
     set_pm2_log_output_wait_timer,
@@ -110,6 +114,13 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
             )
         ]
 
+        # Used for excluding blacklist patterns that list a key being blacklisted that is not ours.
+        self._blacklist_exclude_hotkey_regexes = [
+            re.compile(exclude_string) for exclude_string in (
+                r"Key is blacklisted: (?P<key>5[a-zA-Z0-9]{47})",
+            )
+        ]
+
         self._blacklist_wait_time = 86400  # 1 day
         self._blacklist_notify_time = None
         self._process_name = process_name
@@ -152,6 +163,18 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                             "Not sending a discord notification."
                         )
                         return
+
+                for exclude_regex in self._blacklist_exclude_hotkey_regexes:
+                    key_match = exclude_regex.search(log_line)
+                    if key_match:
+                        key = key_match.group("key")
+                        if key not in (RIZZO_COLDKEY, RIZZO_HOTKEYS[self._netuid],):
+                            self.log_info(
+                                "Log line is blacklisting a hotkey that is not ours. "
+                                "Not sending a discord notification."
+                            )
+                            return
+                        break
 
                 self.log_info(
                         "Log line does not match any blacklist exclude patterns. "
