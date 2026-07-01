@@ -13,6 +13,10 @@ from .constants import (
     RED_EP,
     RIZZO_COLDKEY,
     RIZZO_HOTKEYS,
+    BLACKLIST_REGEXES,
+    BLACKLIST_EXCLUDE_SEARCH_REGEXES,
+    BLACKLIST_EXCLUDE_MATCH_REGEXES,
+    BLACKLIST_EXCLUDE_HOTKEY_REGEXES,
 )
 from .utils import (
     get_pm2_log_output_wait_timer,
@@ -64,61 +68,18 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
         self._blacklist_log_max_length = 500
 
         self._blacklist_regexes = [
-            re.compile(match_string, flags=flags) for match_string, flags in (
-                (r"blacklist", re.IGNORECASE),
-                (r"403.+Forbidden", 0),  # re.NOFLAG doesn't exist in python 3.10
-            )
+            re.compile(match_string, flags=flags) for match_string, flags in BLACKLIST_REGEXES
         ]
         self._blacklist_exclude_search_regexes = [
-            re.compile(exclude_string) for exclude_string in (
-                r"reconnect_blacklist pruned",  # sn2
-                r"UnknownSynapseError",  # sn7, sn74, sn128
-                r"blacklist_fn took",  # sn8
-                r"Set dynamic config",  # sn12: setting some BLACKLIST-related env var
-                r"Evicting expired miner blacklists",   # sn12
-                r"reddit\.com",  # sn13
-                r"tweet_id=",  # sn13
-                r"Judge response unparseable",  # sn15
-                r"validator\.api\.registry_blacklist",  # sn19: module for blacklisting miners
-                r"validator\.verification\.blacklist",  # sn19: module for blacklisting miners
-                r"twitter_content_relevance",  # sn22: contains twitter content which could have the word "blacklist" in it
-                r"Failed to decode JSON object",  # sn22: contains twitter content which could have the word "blacklist" in it
-                r"Verdict:",  # sn22: more twitter stuff
-                r"(GET|POST) /blacklist-xxx HTTP/1\.1",  # sn34
-                r"/plugins/spamx/BlackList\.Examine\.class\.php",  # sn34, sn67
-                r"https://api\.almanac\.market/api/v1/trading/trading-history",  # sn41
-                r"loaded \d+ blacklisted hotkeys",  # sn44
-                r"https://photon\.komoot\.io",  # sn54
-                r"tensorauth\.qbittensorlabs\.com/token",  # sn63
-                r"Found \d+ blacklisted miners to exclude",  # sn64
-                r"session_id=",  # sn67: scraping something off internet that happens to have "blacklist" in it
-                r"tool call completed",  # sn67
-                r"Set scores to 0 for blacklisted UIDs",  # sn74
-                r"not registered\.",  # sn74
-                r"Blacklist fetch failed",  # sn78
-                r"Blacklist unavailable",  # sn78
-                r"Miner .*is BLACKLISTED",  # sn96
-                r"Blacklist check timeout",  # sn96
-                r"(GET|POST) /v1/[\w/]+ HTTP/1\.1",  # sn103: seems innocuous
-                r"recipient_hotkey=5D7jkdtPJjLv635hUiXFa4cTnZsw7x8CCsd1czj3pk9bz5f7",  # sn103: Kraken's vali hotkey...who knows
-                r"https://minos-r2-proxy\.minos-ai\.workers\.dev",  # sn107
-                r"Invalid submission for hotkey",  # sn108: blacklisted miners
-                r"Got task:",  # sn114
-                r"https://platform\.thesoma\.ai/validator/submit_swebench_validation_score",  # sn114
-                r"hotkey_not_in_metagraph\.",  # sn128: blacklisted miners
-            )
+            re.compile(exclude_string) for exclude_string in BLACKLIST_EXCLUDE_SEARCH_REGEXES
         ]
         self._blacklist_exclude_match_regexes = [
-            re.compile(f"^{exclude_string}$") for exclude_string in (
-                r"blacklist:",
-            )
+            re.compile(f"^{exclude_string}$") for exclude_string in BLACKLIST_EXCLUDE_MATCH_REGEXES
         ]
 
         # Used for excluding blacklist patterns that list a key being blacklisted that is not ours.
         self._blacklist_exclude_hotkey_regexes = [
-            re.compile(exclude_string) for exclude_string in (
-                r"Key is blacklisted: (?P<key>5[a-zA-Z0-9]{47})",
-            )
+            re.compile(exclude_string) for exclude_string in BLACKLIST_EXCLUDE_HOTKEY_REGEXES
         ]
 
         self._blacklist_wait_time = 86400  # 1 day

@@ -1,3 +1,7 @@
+# Standard imports
+import re
+
+
 # Constants
 DEFAULT_UPDATED_THRESHOLD = 1500
 DEFAULT_VTRUST_THRESHOLD = 0.01
@@ -19,12 +23,56 @@ RESTARTER_GIT_PATHS = ["bin/restart_bad_validator", "restarter"]
 # Debugging
 DEBUG = False
 
+BLACKLIST_REGEXES = (
+    (r"blacklist", re.IGNORECASE),
+    (r"403.+Forbidden", 0),  # re.NOFLAG doesn't exist in python 3.10
+)
+BLACKLIST_EXCLUDE_SEARCH_REGEXES = (
+    r"reconnect_blacklist pruned",  # sn2
+    r"UnknownSynapseError",  # sn7, sn74, sn128
+    r"blacklist_fn took",  # sn8
+    r"Set dynamic config",  # sn12: setting some BLACKLIST-related env var
+    r"Evicting expired miner blacklists",   # sn12
+    r"reddit\.com",  # sn13
+    r"tweet_id=",  # sn13
+    r"Judge response unparseable",  # sn15
+    r"validator\.api\.registry_blacklist",  # sn19: module for blacklisting miners
+    r"validator\.verification\.blacklist",  # sn19: module for blacklisting miners
+    r"twitter_content_relevance",  # sn22: contains twitter content which could have the word "blacklist" in it
+    r"Failed to decode JSON object",  # sn22: contains twitter content which could have the word "blacklist" in it
+    r"Verdict:",  # sn22: more twitter stuff
+    r"(GET|POST) /blacklist-xxx HTTP/1\.1",  # sn34
+    r"/plugins/spamx/BlackList\.Examine\.class\.php",  # sn34, sn67
+    r"https://api\.almanac\.market/api/v1/trading/trading-history",  # sn41
+    r"loaded \d+ blacklisted hotkeys",  # sn44
+    r"https://photon\.komoot\.io",  # sn54
+    r"tensorauth\.qbittensorlabs\.com/token",  # sn63
+    r"Found \d+ blacklisted miners to exclude",  # sn64
+    r"session_id=",  # sn67: scraping something off internet that happens to have "blacklist" in it
+    r"tool call completed",  # sn67
+    r"Set scores to 0 for blacklisted UIDs",  # sn74
+    r"not registered\.",  # sn74
+    r"Blacklist fetch failed",  # sn78
+    r"Blacklist unavailable",  # sn78
+    r"Miner .*is BLACKLISTED",  # sn96
+    r"Blacklist check timeout",  # sn96
+    r"(GET|POST) /v1/[\w/]+ HTTP/1\.1",  # sn103: seems innocuous
+    r"recipient_hotkey=5D7jkdtPJjLv635hUiXFa4cTnZsw7x8CCsd1czj3pk9bz5f7",  # sn103: Kraken's vali hotkey...who knows
+    r"https://minos-r2-proxy\.minos-ai\.workers\.dev",  # sn107
+    r"Invalid submission for hotkey",  # sn108: blacklisted miners
+    r"Got task:",  # sn114
+    r"https://platform\.thesoma\.ai/validator/submit_swebench_validation_score",  # sn114
+    r"hotkey_not_in_metagraph\.",  # sn128: blacklisted miners
+)
+BLACKLIST_EXCLUDE_MATCH_REGEXES = (
+    r"blacklist:",
+)
+BLACKLIST_EXCLUDE_HOTKEY_REGEXES = (
+    r"Key is blacklisted: (?P<key>5[a-zA-Z0-9]{47})",
+)
+
 RIZZO_COLDKEY = "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo"
-
-# This is a fix to handle the subnets on which our coldkeys is
-# registered on multiple uids.
 MULTI_UID_HOTKEYS = (20,)
-
 RIZZO_HOTKEYS = {
     1: "5D1saVvssckE1XoPwPzdHrqYZtvBJ3vESsrPNxZ4zAxbKGs1",
     2: "5GWo5GoUpEXeX4VMg32eudaryBbNRWZo39uwiSqCEzZSX9s2",
