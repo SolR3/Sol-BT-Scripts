@@ -21,20 +21,24 @@ VTRUST_MP_QUEUE = None
 
 
 class MetagraphData:
-    def __init__(self, metagraph):
+    # Replace the last_update value in the metagraph with
+    # the last_update value in the metagraph_info because
+    # only that one is accurate for mechid's other than 0.
+    def __init__(self, metagraph, metagraph_info):
         self.netuid = metagraph.netuid
         self.hotkeys = metagraph.hotkeys
         self.coldkeys = metagraph.coldkeys
         self.block = metagraph.block
-        self.last_update = metagraph.last_update
+        self.last_update = metagraph_info.last_update
         self.Tv = metagraph.Tv
 
 
-def get_metagraph_data(network, netuid, mp_queue_name):
+def get_metagraph_data(network, netuid, mechid, mp_queue_name):
     mp_queue = globals()[mp_queue_name]
     with bittensor.Subtensor(network=network) as subtensor:
-        metagraph = subtensor.metagraph(netuid=netuid)
-        metagraph_data = MetagraphData(metagraph)
+        metagraph = subtensor.metagraph(netuid)
+        metagraph_info = subtensor.get_metagraph_info(netuid, mechid=mechid)
+        metagraph_data = MetagraphData(metagraph, metagraph_info)
         mp_queue.put(metagraph_data)
 
 
@@ -68,7 +72,7 @@ class ValidatorCheckerSubtensor(ValidatorChecker):
 
             self.log_info(f"Connecting to subtensor network: {network}")
             try:
-                args = [network, self._netuid, self._mp_queue_name]
+                args = [network, self._netuid, self._mechid, self._mp_queue_name]
                 with multiprocessing.Pool(processes=1) as pool:
                     pool.apply(get_metagraph_data, args)
             except Exception as err:
@@ -108,6 +112,9 @@ class ValidatorCheckerUpdated(ValidatorCheckerSubtensor):
         # Set restart threshold
         self._restart_threshold = options.updated_threshold
 
+        # Set the mechanism to check
+        self._mechid = options.updated_mechid
+
         # Create the multiprocessing queue for passing the metagraph data
         # from the subprocess back to the main process.
         global UPDATED_MP_QUEUE
@@ -135,7 +142,7 @@ class ValidatorCheckerUpdated(ValidatorCheckerSubtensor):
             rizzo_updated = int(
                 metagraph_data.block - metagraph_data.last_update[rizzo_uid])
             self.log_info("")
-            self.log_info(f"Rizzo Updated is {rizzo_updated} blocks.")
+            self.log_info(f"Rizzo Updated on mechid {self._mechid} is {rizzo_updated} blocks.")
 
             if self._check_for_restart:
                 # If the rizzo updated value is greater than the restart threshold
@@ -182,6 +189,10 @@ class ValidatorCheckerVTrust(ValidatorCheckerSubtensor):
 
         # Set restart threshold
         self._restart_threshold = options.vtrust_threshold
+
+        # Set the mechanism to check
+        # This is always 0 because the vTrust is the same across all mechanisms.
+        self._mechid = 0
 
         # Create the multiprocessing queue for passing the metagraph data
         # from the subprocess back to the main process.

@@ -63,6 +63,13 @@ def parse_args():
              f"Default: {DEFAULT_UPDATED_THRESHOLD}")
 
     parser.add_argument(
+        "--updated-mechid",
+        type=int,
+        default=0,
+        help="The mechanism on which to check the updated value (i.e. 0, 1). "
+             "When not specified the default mech 0 is checked.")
+
+    parser.add_argument(
         "--vtrust-threshold",
         type=float,
         default=DEFAULT_VTRUST_THRESHOLD,
