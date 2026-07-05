@@ -39,6 +39,14 @@ def parse_args():
         help="The uid of the subnet.")
 
     parser.add_argument(
+        "--mechid",
+        type=int,
+        default=0,
+        help="The mechanism to check. Defaults to mechid 0. NOTE: Calculation of weight values "
+             "has not yet been implemented for mechids other than 0. For now, when another mechid "
+             "is specified, only the vTrust and updated values will be displayed.")
+
+    parser.add_argument(
         "--threshold",
         type=float,
         default=0.0,
@@ -70,7 +78,8 @@ def get_network(name):
     return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
 
 
-def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold, metagraph, verbose):
+def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold,
+                  metagraph, metagraph_info, mechid, verbose):
     text = Text()
 
     text.append(f"\nOwner:\n==========\n{owner_uid} - {owner_hotkey}\n\n\n")
@@ -89,12 +98,19 @@ def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold, metagraph,
             color = 9
 
         vtrust = metagraph.Tv[uid]
-        updated = metagraph.block - metagraph.last_update[uid]
-        weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > threshold]
+        updated = metagraph_info.block - metagraph_info.last_update[uid]
+
+        # metagraph_info.mechid is always 0 for some reason.
+        if mechid == 0:
+            weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > threshold]
+            num_weights = len(weights)
+        else:
+            weights = "???"
+            num_weights = "???"
 
         if name:
             text.append(f"{name}:\n", style=f"color({color})")
-        text.append(f"{uid} - {metagraph.hotkeys[uid]} (Weights: {len(weights)}  vT: {vtrust:.3f}  U: {updated})\n")
+        text.append(f"{uid} - {metagraph.hotkeys[uid]} (Weights: {num_weights}  vT: {vtrust:.3f}  U: {updated})\n")
         if verbose:
             text.append(str(weights) + "\n")
         text.append("\n")
@@ -200,19 +216,28 @@ def get_owner(subnet, metagraph):
 def main(args):
     import bittensor
 
+    if args.diff and args.mechid != 0:
+        Console().print(Text(
+            "ERROR: Weight diffs have not been implemented for mechids other than 0.",
+            style="color(9)"))
+        return
+
     network = get_network(args.local_subtensor)
     print(f"Connecting to {network}")
 
     with bittensor.Subtensor(network=network) as subtensor:
         subnet = subtensor.subnet(args.netuid)
         metagraph = subtensor.metagraph(args.netuid, lite=False)
+        metagraph_info = subtensor.get_metagraph_info(args.netuid, mechid=args.mechid)
 
     if args.diff:
         uids = get_diff_uids(*args.diff, metagraph)
         print_weight_diffs(*uids, args.threshold, metagraph, args.verbose)
+
     else:
         owner_uid, owner_hotkey, owner_coldkeys = get_owner(subnet, metagraph)
-        print_weights(owner_uid, owner_hotkey, owner_coldkeys, args.threshold, metagraph, args.verbose)
+        print_weights(owner_uid, owner_hotkey, owner_coldkeys, args.threshold,
+                      metagraph, metagraph_info, args.mechid, args.verbose)
 
 
 if __name__ == "__main__":
