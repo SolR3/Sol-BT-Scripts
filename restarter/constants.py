@@ -66,6 +66,7 @@ BLACKLIST_EXCLUDE_SEARCH_REGEXES = (
 )
 BLACKLIST_EXCLUDE_MATCH_REGEXES = (
     r"blacklist:",
+    r"INFO:     connection rejected \(403 Forbidden\)",
 )
 BLACKLIST_EXCLUDE_HOTKEY_REGEXES = (
     r"Key is blacklisted: (?P<key>5[a-zA-Z0-9]{47})",
