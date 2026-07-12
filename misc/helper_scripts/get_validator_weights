@@ -47,6 +47,13 @@ def parse_args():
              "is specified, only the vTrust and updated values will be displayed.")
 
     parser.add_argument(
+        "--target-uids",
+        nargs="+",
+        type=int,
+        help="When specified, only display the weights for the specified target uids."
+    )
+
+    parser.add_argument(
         "--threshold",
         type=float,
         default=0.0,
@@ -79,7 +86,7 @@ def get_network(name):
 
 
 def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold,
-                  metagraph, metagraph_info, mechid, verbose):
+                  metagraph, metagraph_info, mechid, target_uids, verbose):
     text = Text()
 
     text.append(f"\nOwner:\n==========\n{owner_uid} - {owner_hotkey}\n\n\n")
@@ -103,6 +110,8 @@ def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold,
         # metagraph_info.mechid is always 0 for some reason.
         if mechid == 0:
             weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > threshold]
+            if target_uids:
+                weights = [w for w in weights if w[0] in target_uids]
             num_weights = len(weights)
         else:
             weights = "???"
@@ -118,7 +127,7 @@ def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold,
     Console().print(text)
 
 
-def print_weight_diffs(uid_a, uid_b, threshold, metagraph, verbose):
+def print_weight_diffs(uid_a, uid_b, threshold, metagraph, target_uids, verbose):
     vtrust_a = metagraph.Tv[uid_a]
     vtrust_b = metagraph.Tv[uid_b]
     updated_a = metagraph.block - metagraph.last_update[uid_a]
@@ -131,6 +140,8 @@ def print_weight_diffs(uid_a, uid_b, threshold, metagraph, verbose):
 
     weight_diffs = metagraph.weights[uid_a] - metagraph.weights[uid_b]
     weight_diffs = [(i, float(w)) for i, w in enumerate(weight_diffs) if abs(w) > threshold]
+    if target_uids:
+        weight_diffs = [w for w in weight_diffs if w[0] in target_uids]
 
     print("Weight Diffs:\n==============")
     print(f"{len(weight_diffs)} differences\n")
@@ -232,12 +243,13 @@ def main(args):
 
     if args.diff:
         uids = get_diff_uids(*args.diff, metagraph)
-        print_weight_diffs(*uids, args.threshold, metagraph, args.verbose)
+        print_weight_diffs(*uids, args.threshold, metagraph, args.target_uids, args.verbose)
 
     else:
         owner_uid, owner_hotkey, owner_coldkeys = get_owner(subnet, metagraph)
         print_weights(owner_uid, owner_hotkey, owner_coldkeys, args.threshold,
-                      metagraph, metagraph_info, args.mechid, args.verbose)
+                      metagraph, metagraph_info, args.mechid, args.target_uids,
+                      args.verbose)
 
 
 if __name__ == "__main__":

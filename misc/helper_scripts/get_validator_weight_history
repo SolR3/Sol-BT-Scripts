@@ -20,6 +20,13 @@ def parse_args():
         help="The uids of the validators for which to print weights.")
 
     parser.add_argument(
+        "--target-uids",
+        nargs="+",
+        type=int,
+        help="When specified, only display the weights for the specified target uids."
+    )
+
+    parser.add_argument(
         "--threshold",
         type=float,
         default=0.0,
@@ -112,9 +119,11 @@ async def main(args):
         for uid in args.uids:
             vtrust = metagraph.Tv[uid]
             updated = metagraph.block - metagraph.last_update[uid]
-            weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if float(w) > args.threshold]
             print(f"uid {uid} (vT: {vtrust:.3f}  U: {updated})")
             if args.verbose:
+                weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if float(w) > args.threshold]
+                if args.target_uids:
+                    weights = [w for w in weights if w[0] in args.target_uids]
                 print(f"{weights}\n")
         print("\n")
 
