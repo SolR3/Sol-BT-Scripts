@@ -2,6 +2,7 @@
 import argparse
 import logging
 import multiprocessing
+import os
 import random
 import sys
 import time
@@ -54,6 +55,9 @@ class BurnValidator:
         self.local_subtensor_index = random.randint(0, len(LOCAL_SUBTENSORS) - 1)
 
     def get_config(self):
+        # We need this now so that the bittensor.Config will pick up our parser args as well
+        os.environ["BT_NO_PARSE_CLI_ARGS"] = "false"
+
         # Set up the configuration parser.
         parser = argparse.ArgumentParser(
             description="Subnet Validator",
