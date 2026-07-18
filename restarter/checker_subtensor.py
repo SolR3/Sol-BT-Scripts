@@ -75,7 +75,7 @@ class ValidatorCheckerSubtensor(ValidatorChecker):
                 args = [network, self._netuid, self._mechid, self._mp_queue_name]
                 with multiprocessing.Pool(processes=1) as pool:
                     pool.apply(get_metagraph_data, args)
-            except TypeError:
+            except (TypeError, ValueError):
                 raise
             except Exception as err:
                 self.log_error("")
