@@ -4,6 +4,7 @@ import json
 import os
 import shlex
 import subprocess
+import tempfile
 
 # local imports
 from manual_weights_setter.common import parse_ensure_set_weights_args
@@ -14,6 +15,7 @@ SCRIPT_NAME = "ensure_set_weights"
 
 class EnsureSetWeightsStarter:
     def __init__(self, args, extra_args):
+        self._venv = args.venv
         self._add_netuids = args.add
         self._remove_netuids = args.remove
         self._extra_input_args = extra_args
@@ -105,52 +107,95 @@ class EnsureSetWeightsStarter:
 
     def _restart_process(self):
         """ Delete the existing pm2 process and start a new pm2 process."""
-        # Delete the existing pm2 process if it exists
-        if self._existing_process:
-            pm2_stop_cmd = ["pm2", "delete", self._existing_process]
+        if not self._existing_process and not self._process_args.netuids:
             print("")
-            print(f"Running command: {shlex.join(pm2_stop_cmd)}")
-            print("")
-            try:
-                subprocess.run(pm2_stop_cmd, check=True)
-            except subprocess.CalledProcessError as exc:
-                print(f"ERROR: Command failed with error: {exc}")
-                return
-
-        if not self._process_args.netuids:
-            print("")
-            print(f"There are no netuids to run. Not running {SCRIPT_NAME} process.")
+            print(f"Nothing to run. Not running {SCRIPT_NAME} process.")
             print("")
             return
 
-        # Start the new pm2 process
-        pm2_start_cmd = [
-            "pm2", "start", "--interpreter", "python3", self._script_path, "--"
-        ]
-        for arg, value in self._process_args.__dict__.items():
-            if value is None:
-                continue
-
-            # Special case for --skip-discord-notify arg
-            if arg == "discord_notify":
-                if value is False:
-                    pm2_start_cmd.extend(["--skip-discord-notify"])
-                continue
-
-            command_line_arg = ["--" + arg.replace("_", "-")]
-            if isinstance(value, list):
-                command_line_arg.extend(str(v) for v in value)
-            else:
-                command_line_arg.append(str(value))
-            pm2_start_cmd.extend(command_line_arg)
+        homedir = os.path.expanduser("~")
+        venv_path = os.path.join(
+            os.path.expanduser(self._venv), "bin/activate"
+        )
 
         print("")
-        print(f"Running command: {shlex.join(pm2_start_cmd)}")
+        print(f"Running in venv: {self._venv}")
         print("")
+
+        script_text = (
+            "#!/bin/bash\n"
+            "\n"
+            f"cd {homedir}\n"
+            f"source {venv_path}\n"
+        )
+
+        # Delete the existing pm2 process if it exists
+        if self._existing_process:
+            pm2_stop_cmd = ["pm2", "delete", self._existing_process]
+            pm2_stop_cmd = shlex.join(pm2_stop_cmd)
+
+            print("")
+            print(f"Running command: {pm2_stop_cmd}")
+            print("")
+
+            script_text += f"{pm2_stop_cmd}\n"
+
+        if self._process_args.netuids:
+            # Start the new pm2 process
+            pm2_start_cmd = [
+                "pm2", "start", "--interpreter", "python3", self._script_path, "--"
+            ]
+
+            for arg, value in self._process_args.__dict__.items():
+                if value is None:
+                    continue
+
+                # Special case for --skip-discord-notify arg
+                if arg == "discord_notify":
+                    if value is False:
+                        pm2_start_cmd.extend(["--skip-discord-notify"])
+                    continue
+
+                command_line_arg = ["--" + arg.replace("_", "-")]
+                if isinstance(value, list):
+                    command_line_arg.extend(str(v) for v in value)
+                else:
+                    command_line_arg.append(str(value))
+                pm2_start_cmd.extend(command_line_arg)
+
+            pm2_start_cmd = shlex.join(pm2_start_cmd)
+
+            print("")
+            print(f"Running command: {pm2_start_cmd}")
+            print("")
+
+            script_text += f"{pm2_start_cmd}\n"
+
+        else:
+            print("")
+            print(f"There are no netuids to run. Not running {SCRIPT_NAME} process.")
+            print("")
+
+        fp, run_script = tempfile.mkstemp(
+            prefix="update_ensure_set_weights_", suffix=".sh"
+        )
+        os.close(fp)
+        os.chmod(run_script, 0o700)
+
+        with open(run_script, "w") as fp:
+            fp.write(script_text)
+
+        print("")
+        print(f"Running shell script: {run_script}")
+        print("")
+
         try:
-            subprocess.run(pm2_start_cmd, check=True)
+            subprocess.run([run_script], check=True)
         except subprocess.CalledProcessError as exc:
-            print(f"ERROR: Command failed with error: {exc}")
+            print(f"\nERROR: Shell script failed with error: {exc}")
+
+        os.unlink(run_script)
+
 
     def _save_pm2(self):
         pm2_save_cmd = ["pm2", "save"]

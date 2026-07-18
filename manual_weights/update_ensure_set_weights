@@ -13,6 +13,12 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
+        "venv",
+        help="The path to the venv used for running the process "
+             "(without the bin/activate part)."
+    )
+
+    parser.add_argument(
         "--add",
         type=int,
         nargs="+",

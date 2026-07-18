@@ -62,7 +62,6 @@ def main(options):
             "#!/bin/bash\n"
             "\n"
             f"cd {homedir}\n"
-            "deactivate\n"
             f"source {venv_path}\n"
             f"{pm2_stop_cmd}\n"
             f"{pm2_start_cmd}\n"
