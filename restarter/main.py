@@ -27,6 +27,8 @@ from .checker_subtensor import (
     ValidatorCheckerVTrust,
 )
 from .constants import (
+    AT_SOL,
+    AT_USERS,
     DEBUG,
     RED_X,
     RESTARTER_GIT_PATHS,
@@ -70,7 +72,7 @@ def _run_checker(checker_class, options):
         checker_class.log_error(f"Error: {exc}")
         send_monitor_notification(
             checker_class.log_prefix,
-            f"{RED_X} restarter check \"{checker_class.log_prefix}\" "
+            f"{AT_USERS} {RED_X} restarter check \"{checker_class.log_prefix}\" "
             f"failed on subnet {options.netuid}"
         )
 
@@ -113,7 +115,7 @@ def check_for_restarter_code_update(netuid):
         log_error("Not checking for restarter code updates.")
         send_monitor_notification(
             RESTARTER_PREFIX,
-            f"{RED_X} Failed to update restarter git repo on subnet {netuid}"
+            f"{AT_SOL} {RED_X} Failed to update restarter git repo on subnet {netuid}"
         )
 
     # TODO: This duplicate code needs to be in a separate function.
