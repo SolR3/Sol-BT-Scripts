@@ -71,6 +71,12 @@ def parse_args():
         help="If specified then don't print the actual weight values.")
 
     parser.add_argument(
+        "--print-coldkeys",
+        action="store_true",
+        help="If specified then print the validators' coldkeys instead of their hotkeys. "
+             "This arg does not apply to the --diff printout.")
+
+    parser.add_argument(
         "-l", "--local-subtensor",
         help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
              "When not specified, use the 'finney' network subtensor."
@@ -85,11 +91,14 @@ def get_network(name):
     return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
 
 
-def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold,
-                  metagraph, metagraph_info, mechid, target_uids, verbose):
+def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold, metagraph,
+                  metagraph_info, mechid, target_uids, print_coldkeys, verbose):
     text = Text()
-
-    text.append(f"\nOwner:\n==========\n{owner_uid} - {owner_hotkey}\n\n\n")
+    if print_coldkeys:
+        owner_keys = f"({', '.join(owner_coldkeys)})" if len(owner_coldkeys) > 1 else owner_coldkeys[0]
+    else:
+        owner_keys = owner_hotkey
+    text.append(f"\nOwner:\n==========\n{owner_uid} - {owner_keys}\n\n\n")
     text.append("Weights:\n==========\n")
     for uid in metagraph.uids[metagraph.validator_permit]:
         name = None
@@ -119,7 +128,8 @@ def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold,
 
         if name:
             text.append(f"{name}:\n", style=f"color({color})")
-        text.append(f"{uid} - {metagraph.hotkeys[uid]} (Weights: {num_weights}  vT: {vtrust:.3f}  U: {updated})\n")
+        key = metagraph.coldkeys[uid] if print_coldkeys else metagraph.hotkeys[uid]
+        text.append(f"{uid} - {key} (Weights: {num_weights}  vT: {vtrust:.3f}  U: {updated})\n")
         if verbose:
             text.append(str(weights) + "\n")
         text.append("\n")
@@ -221,17 +231,25 @@ def get_owner(subnet, metagraph):
         owner_hotkey = None
         owner_coldkeys = set()
 
+    owner_coldkeys = list(owner_coldkeys)
+
     return owner_uid, owner_hotkey, owner_coldkeys
 
 
 def main(args):
     import bittensor
 
-    if args.diff and args.mechid != 0:
-        Console().print(Text(
-            "ERROR: Weight diffs have not been implemented for mechids other than 0.",
-            style="color(9)"))
-        return
+    if args.diff:
+        if args.mechid != 0:
+            Console().print(Text(
+                "ERROR: Weight diffs have not been implemented for mechids other than 0.",
+                style="color(9)"))
+            return
+        if args.print_coldkeys:
+            Console().print(Text(
+                "ERROR: The --print-coldkeys arg does not apply when printing the weight diffs.",
+                style="color(9)"))
+            return
 
     network = get_network(args.local_subtensor)
     print(f"Connecting to {network}")
@@ -249,7 +267,7 @@ def main(args):
         owner_uid, owner_hotkey, owner_coldkeys = get_owner(subnet, metagraph)
         print_weights(owner_uid, owner_hotkey, owner_coldkeys, args.threshold,
                       metagraph, metagraph_info, args.mechid, args.target_uids,
-                      args.verbose)
+                      args.print_coldkeys, args.verbose)
 
 
 if __name__ == "__main__":
