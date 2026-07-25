@@ -22,10 +22,7 @@ from .checker_stopped_logs import (
     ValidatorCheckerDockerStoppedLogs,
     ValidatorCheckerPm2StoppedLogs,
 )
-from .checker_subtensor import (
-    ValidatorCheckerUpdated,
-    ValidatorCheckerVTrust,
-)
+from .checker_subtensor import ValidatorCheckerSubtensor
 from .constants import (
     AT_SOL,
     AT_USERS,
@@ -64,15 +61,16 @@ class RestartChecker:
 
 def _run_checker(checker_class, options):
     try:
-        checker_class(options)
+        checker_obj = checker_class(options)
+        checker_obj.run()
     except Exception as exc:
         import traceback
 
         traceback.print_exc()
-        checker_class.log_error(f"Error: {exc}")
+        checker_obj.log_error(f"Error: {exc}")
         send_monitor_notification(
-            checker_class.log_prefix,
-            f"{AT_USERS} {RED_X} restarter check \"{checker_class.log_prefix}\" "
+            checker_obj.log_prefix,
+            f"{AT_USERS} {RED_X} restarter check \"{checker_obj.log_prefix}\" "
             f"failed on subnet {options.netuid}"
         )
 
@@ -239,7 +237,8 @@ def run(options):
         restart_checks.append(
             RestartChecker(
                 descriptor="Updated value",
-                checker_class=ValidatorCheckerUpdated
+                checker_class=ValidatorCheckerSubtensor,
+                set_options=(("checker_type", "Updated"),)
             )
         )
 
@@ -248,7 +247,8 @@ def run(options):
         restart_checks.append(
             RestartChecker(
                 descriptor="vTrust value",
-                checker_class=ValidatorCheckerVTrust
+                checker_class=ValidatorCheckerSubtensor,
+                set_options=(("checker_type", "VTrust"),)
             )
         )
 

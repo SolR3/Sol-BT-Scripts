@@ -1,10 +1,10 @@
 # Standard imports
 import multiprocessing
+import os
+import pickle
 import random
+import tempfile
 import time
-
-# Bittensor import
-import bittensor
 
 # Local imports
 from .checker_base import ValidatorChecker
@@ -12,7 +12,9 @@ from .constants import (
     RIZZO_COLDKEY,
     RIZZO_HOTKEYS,
     MULTI_UID_HOTKEYS,
+    RED_X,
 )
+from .utils import send_monitor_notification
 
 
 # Multiprocessing Queues
@@ -33,17 +35,33 @@ class MetagraphData:
         self.Tv = metagraph.Tv
 
 
-def get_metagraph_data(network, netuid, mechid, mp_queue_name):
-    mp_queue = globals()[mp_queue_name]
+def get_metagraph_data(log_prefix, network, netuid, mechid):
+    import bittensor
+
+    bittensor.logging.info(f"{log_prefix}: Connecting to subtensor network: {network}")
     with bittensor.Subtensor(network=network) as subtensor:
         metagraph = subtensor.metagraph(netuid)
         metagraph_info = subtensor.get_metagraph_info(netuid, mechid=mechid)
         metagraph_data = MetagraphData(metagraph, metagraph_info)
-        mp_queue.put(metagraph_data)
+        return metagraph_data
+
+
+def write_metagraph_data_to_mp_queue(log_prefix, network, netuid, mechid, mp_queue_name):
+    metagraph_data = get_metagraph_data(log_prefix, network, netuid, mechid)
+    globals()[mp_queue_name].put(metagraph_data)
+
+
+def write_metagraph_data_to_pkl_file(log_prefix, network, netuid, mechid, pickle_file):
+    import bittensor
+
+    metagraph_data = get_metagraph_data(log_prefix, network, netuid, mechid)
+    bittensor.logging.info(f"{log_prefix}: Writing pickle file: {pickle_file}")
+    with open(pickle_file, "wb") as fp:
+        pickle.dump(metagraph_data, fp)
 
 
 class ValidatorCheckerSubtensor(ValidatorChecker):
-    # Updated and vTrust checkers only
+    log_prefix = "CHECK SUBTENSOR"
 
     _local_subtensors = [
         "cali",
@@ -54,7 +72,20 @@ class ValidatorCheckerSubtensor(ValidatorChecker):
         "titan",
     ]
 
-    def _init_setup(self):
+    def __new__(cls, options):
+        if cls is not ValidatorCheckerSubtensor:
+            return super().__new__(cls)
+
+        checker_type = options.checker_type
+        get_method = "PklFile" if options.use_pickle_file else "MpQueue"
+
+        class_name = f"ValidatorChecker{checker_type}{get_method}"
+        class_obj = globals()[class_name]
+        class_obj.log_info(f"Running checker class: {class_name}")
+
+        return super().__new__(class_obj)
+
+    def _init_setup(self, *args, **kwargs):
         # Start false in case this is added after a manual restart.
         self._check_for_restart = False
 
@@ -62,7 +93,7 @@ class ValidatorCheckerSubtensor(ValidatorChecker):
         random.seed()
         self._local_subtensor_index = random.randint(0, len(self._local_subtensors) - 1)
 
-    def _get_metagraph_data(self):
+    def _get_metagraph_data(self, *subprocess_args):
         # Loop until we get a subtensor connection
         while True:
             self._local_subtensor_index = \
@@ -70,11 +101,11 @@ class ValidatorCheckerSubtensor(ValidatorChecker):
             network_name = self._local_subtensors[self._local_subtensor_index]
             network = f"ws://subtensor-{network_name}.rizzo.network:9944"
 
-            self.log_info(f"Connecting to subtensor network: {network}")
+            get_metagraph_func = globals()[self._get_metagraph_func]
+            args = [self.log_prefix, network, self._netuid, self._mechid, *subprocess_args]
             try:
-                args = [network, self._netuid, self._mechid, self._mp_queue_name]
                 with multiprocessing.Pool(processes=1) as pool:
-                    pool.apply(get_metagraph_data, args)
+                    pool.apply(get_metagraph_func, args)
             except (TypeError, ValueError):
                 raise
             except Exception as err:
@@ -86,9 +117,6 @@ class ValidatorCheckerSubtensor(ValidatorChecker):
                 time.sleep(1)
             else:
                 break
-
-        mp_queue = globals()[self._mp_queue_name]
-        return mp_queue.get()
 
     def _get_rizzo_uid(self, metagraph_data):
         if metagraph_data.netuid in MULTI_UID_HOTKEYS:
@@ -105,23 +133,57 @@ class ValidatorCheckerSubtensor(ValidatorChecker):
             return None
 
 
+class ValidatorCheckerMpQueue(ValidatorCheckerSubtensor):
+    _get_metagraph_func = "write_metagraph_data_to_mp_queue"
+
+    def _init_setup(self, *args, **kwargs):
+        super()._init_setup(*args, **kwargs)
+
+        # Create the multiprocessing queue for passing the metagraph data
+        # from the subprocess back to the main process.
+        globals()[self._mp_queue_name] = multiprocessing.Queue()
+
+    def _get_metagraph_data(self):
+        super()._get_metagraph_data(self._mp_queue_name)
+
+        return globals()[self._mp_queue_name].get()
+
+
+class ValidatorCheckerPklFile(ValidatorCheckerSubtensor):
+    _get_metagraph_func = "write_metagraph_data_to_pkl_file"
+
+    def _get_metagraph_data(self):
+        fp, pickle_file = tempfile.mkstemp(prefix=self._pickle_file_name + "_", suffix=".pkl")
+        os.close(fp)
+
+        try:
+            super()._get_metagraph_data(pickle_file)
+
+            # read pickle file
+            if not os.path.isfile(pickle_file):
+                self.log_error(f"Pickle file {pickle_file} does not exist, could not get metagraph data.")
+                return None
+
+            self.log_info(f"Reading pickle file: {pickle_file}")
+            with open(pickle_file, "rb") as fp:
+                return pickle.load(fp)
+
+        finally:
+            if os.path.isfile(pickle_file):
+                os.unlink(pickle_file)
+
+
 class ValidatorCheckerUpdated(ValidatorCheckerSubtensor):
     log_prefix = "CHECK UPDATED"
 
     def _init_setup(self, options):
-        super()._init_setup()
+        super()._init_setup(options)
 
         # Set restart threshold
         self._restart_threshold = options.updated_threshold
 
         # Set the mechanism to check
         self._mechid = options.updated_mechid
-
-        # Create the multiprocessing queue for passing the metagraph data
-        # from the subprocess back to the main process.
-        global UPDATED_MP_QUEUE
-        UPDATED_MP_QUEUE = multiprocessing.Queue()
-        self._mp_queue_name = "UPDATED_MP_QUEUE"
 
     def _run(self):
         self.log_info("")
@@ -132,6 +194,18 @@ class ValidatorCheckerUpdated(ValidatorCheckerSubtensor):
 
         while True:
             metagraph_data = self._get_metagraph_data()
+            if not metagraph_data:
+                self.log_error(
+                    "Could not get metagraph. Not checking Updated value. "
+                )
+                send_monitor_notification(
+                    self.log_prefix,
+                    f"{RED_X} Failed to check updated value on subnet {self._netuid}"
+                )
+                self.log_info(f"Sleeping for {default_sleep_time} seconds.")
+                time.sleep(default_sleep_time)
+                continue
+
             rizzo_uid = self._get_rizzo_uid(metagraph_data)
             if rizzo_uid is None:
                 self.log_warning(
@@ -187,7 +261,7 @@ class ValidatorCheckerVTrust(ValidatorCheckerSubtensor):
     log_prefix = "CHECK VTRUST"
 
     def _init_setup(self, options):
-        super()._init_setup()
+        super()._init_setup(options)
 
         # Set restart threshold
         self._restart_threshold = options.vtrust_threshold
@@ -195,12 +269,6 @@ class ValidatorCheckerVTrust(ValidatorCheckerSubtensor):
         # Set the mechanism to check
         # This is always 0 because the vTrust is the same across all mechanisms.
         self._mechid = 0
-
-        # Create the multiprocessing queue for passing the metagraph data
-        # from the subprocess back to the main process.
-        global VTRUST_MP_QUEUE
-        VTRUST_MP_QUEUE = multiprocessing.Queue()
-        self._mp_queue_name = "VTRUST_MP_QUEUE"
 
     def _run(self):
         self.log_info("")
@@ -211,6 +279,18 @@ class ValidatorCheckerVTrust(ValidatorCheckerSubtensor):
 
         while True:
             metagraph_data = self._get_metagraph_data()
+            if not metagraph_data:
+                self.log_error(
+                    "Could not get metagraph. Not checking vTrust value. "
+                )
+                send_monitor_notification(
+                    self.log_prefix,
+                    f"{RED_X} Failed to check vTrust value on subnet {self._netuid}"
+                )
+                self.log_info(f"Sleeping for {sleep_interval} seconds.")
+                time.sleep(sleep_interval)
+                continue
+
             rizzo_uid = self._get_rizzo_uid(metagraph_data)
             if rizzo_uid is None:
                 self.log_warning(
@@ -256,3 +336,19 @@ class ValidatorCheckerVTrust(ValidatorCheckerSubtensor):
 
             self.log_info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
+
+
+class ValidatorCheckerUpdatedMpQueue(ValidatorCheckerMpQueue, ValidatorCheckerUpdated):
+    _mp_queue_name = "UPDATED_MP_QUEUE"
+
+
+class ValidatorCheckerUpdatedPklFile(ValidatorCheckerPklFile, ValidatorCheckerUpdated):
+    _pickle_file_name = "metagraph_updated"
+
+
+class ValidatorCheckerVTrustMpQueue(ValidatorCheckerMpQueue, ValidatorCheckerVTrust):
+    _mp_queue_name = "VTRUST_MP_QUEUE"
+
+
+class ValidatorCheckerVTrustPklFile(ValidatorCheckerPklFile, ValidatorCheckerVTrust):
+    _pickle_file_name = "metagraph_vtrust"

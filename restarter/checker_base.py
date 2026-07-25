@@ -22,6 +22,8 @@ class ValidatorChecker:
 
         self._init_restart_stuff(options)
         self._init_setup(options)
+
+    def run(self):
         self._run()
 
     @classmethod

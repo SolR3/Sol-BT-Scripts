@@ -55,6 +55,14 @@ def parse_args():
              "subtensors.")
 
     parser.add_argument(
+        "--use-pickle-file",
+        action="store_true",
+        help="By default, a multiprocessing queue is used to communicate the metagraph data "
+             "between the subprocess and the main process for the Updated and vTrust checkers. "
+             "When this arg is specified, a pickle file is used instead. This gets around an "
+             "issue that some VMs have where writing to the multiprocessing queue just hangs.")
+
+    parser.add_argument(
         "--updated-threshold",
         type=int,
         default=DEFAULT_UPDATED_THRESHOLD,
