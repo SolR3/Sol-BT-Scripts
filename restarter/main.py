@@ -80,7 +80,7 @@ def notify_ip_address(options):
     # for netuids that may be running rogue restarter processes.
 
     # Populate this with the list of netuids who's restarter processes we want to find.
-    netuids = []
+    netuids = [23, 43]
 
     if options.netuid in netuids:
         import socket
