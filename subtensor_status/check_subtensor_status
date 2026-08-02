@@ -6,23 +6,25 @@ from dataclasses import dataclass, asdict
 import json
 import multiprocessing
 import os
+import sys
 import time
 
+# Set path to import local modules
+sys.path = [os.path.dirname(__file__)] + sys.path
 
-LOCAL_TIMEZONE = "MST7MDT"
-JSON_FILE_NAME = "subtensor_status.json"
-TIMESTAMP_FILE_NAME = "timestamp.json"
-LOCAL_SUBTENSORS = [
-    "ws://subtensor-cali.rizzo.network:9944",
-    "ws://subtensor-candyland.rizzo.network:9944",
-    "ws://subtensor-la.rizzo.network:9944",
-    "ws://subtensor-moonbase.rizzo.network:9944",
-    "ws://subtensor-titan.rizzo.network:9944",
-    "ws://subtensor-datacenter01.rizzo.network:9944",
-    "ws://subtensor-lite-archive.rizzo.network:9933",
-    "ws://192.168.69.55:9944 (local archive)",
-]
-FINNEY_INTERVAL = 120  # In minutes
+from subtensor_constants import (
+    LOCAL_TIMEZONE,
+    JSON_FILE_NAME,
+    FINNEY_BLOCK_FILE_NAME,
+    TIMESTAMP_FILE_NAME,
+    LOCAL_SUBTENSORS,
+    FINNEY_INTERVAL,
+)
+from subtensor_utils import (
+    FinneyBlockData,
+    format_time
+)
+
 
 mp_queue = multiprocessing.Queue()
 
@@ -40,8 +42,15 @@ def _parse_args():
     parser.add_argument(
         "-j", "--json-folder",
         help="The json folder in which to write the json files. If this is specified "
-             "then a json is written sontaining each subtensor's status. If not "
+             "then a json is written containing each subtensor's status. If not "
              "specified then each subtensor's status is printed to stdout."
+    )
+
+    parser.add_argument(
+        "-f", "--finney-block-folder",
+        help="The json folder in which to read the finney block json file. If this "
+                "is specified then the finney block is read from the file. If not "
+                "specified then the finney block is obtained from the subtensor."
     )
 
     parser.add_argument(
@@ -55,64 +64,50 @@ def _parse_args():
     return parser.parse_args()
 
 
-def format_time(total_time):
-    m = total_time/60
-    minutes = int(m)
-    seconds = round((m - minutes)*60)
-
-    runtime_text = [f"{minutes} minutes"] if minutes else []
-    if seconds:
-        runtime_text += [f"{seconds} seconds"]
-    runtime_text = ", ".join(runtime_text)
-
-    return runtime_text
-
-
+# TODO - This is ridiculous. The timestamp just needs to be in the subtensor_status.json file
 def write_timestamp(json_folder):
+    timestamp_file = os.path.join(json_folder, TIMESTAMP_FILE_NAME)
+
     os.environ["TZ"] = LOCAL_TIMEZONE
     time.tzset()
 
-    max_file_time = 0
-    json_base, json_ext = os.path.splitext(JSON_FILE_NAME)
-    for _file in os.listdir(json_folder):
-        file_base, file_ext = os.path.splitext(_file)
-        if not file_base.startswith(json_base) or file_ext != json_ext:
-            continue
-
-        json_file = os.path.join(json_folder, _file)
-        file_time = os.path.getmtime(json_file)
-        if file_time > max_file_time:
-            max_file_time = file_time
+    data_file = os.path.join(json_folder, JSON_FILE_NAME)
+    if os.path.isfile(data_file):
+        file_time = os.path.getmtime(data_file)
+    else:
+        bittensor.logging.error(f"Can't get timestamp. Json file does not exist: {data_file}")
+        file_time = 0
 
     timestamp = {
-        "display_time": time.ctime(max_file_time),
-        "actual_time": int(max_file_time),
+        "display_time": time.ctime(file_time),
+        "actual_time": int(file_time),
     }
-    timestamp_file = os.path.join(json_folder, TIMESTAMP_FILE_NAME)
+
+    # First remove the existing timestamp file
+    if os.path.isfile(timestamp_file):
+        bittensor.logging.info(f"Removing {timestamp_file}")
+        os.unlink(timestamp_file)
+
+    # Then write the new timestamp file
     bittensor.logging.info(f"Writing timestamp file: {timestamp_file}")
     with open(timestamp_file, "w") as fd:
-            json.dump(timestamp, fd)
+        json.dump(timestamp, fd)
 
 
 def write_json_file(subtensor_data, json_folder):
+    json_file = os.path.join(json_folder, JSON_FILE_NAME)
+
     # Get a serializable version of the data
     subtensor_json_data = []
     for subtensor in subtensor_data:
         subtensor_json_data.append(asdict(subtensor))
 
-    # First remove all existing json files
-    for file_name in os.listdir(json_folder):
-        json_file = os.path.join(json_folder, file_name)
-        if (
-            not os.path.isfile(json_file)
-            or os.path.splitext(json_file)[1] != ".json"
-        ):
-            continue
+    # First remove the existing json file
+    if os.path.isfile(json_file):
         bittensor.logging.info(f"Removing {json_file}")
         os.unlink(json_file)
 
     # Then write the new data json file
-    json_file = os.path.join(json_folder, JSON_FILE_NAME)
     bittensor.logging.info(f"\nWriting data to file: {json_file}")
     with open(json_file, "w") as fd:
         json.dump(subtensor_json_data, fd, indent=4)
@@ -180,6 +175,45 @@ def run_in_subprocess(network):
     return mp_queue.get()
 
 
+def get_finney_block_from_json_file(finney_block_folder):
+    json_file = os.path.join(finney_block_folder, FINNEY_BLOCK_FILE_NAME)
+
+    if not os.path.isfile(json_file):
+        bittensor.logging.error(f"Finney block json file does not exist: {json_file}")
+        return None
+
+    with open(json_file, "r") as fd:
+        finney_block_dict = json.load(fd)
+    finney_block_data = FinneyBlockData(**finney_block_dict)
+
+    if finney_block_data.block is None:
+        bittensor.logging.error("Finney block json file does not contain the "
+                                f"finney block: {json_file}")
+        return None
+
+    block_diff = round((time.time() - finney_block_data.time) / 12)  # seconds per block
+    return finney_block_data.block + block_diff
+
+
+def get_finney_block_from_subtensor():
+    result = run_in_subprocess("finney")
+    try:
+        return int(result)
+    except ValueError:
+        bittensor.logging.error("Failed to get finney block.")
+        bittensor.logging.error(result)
+        return None
+
+
+def get_finney_block(options):
+    if options.finney_block_folder:
+        bittensor.logging.info("Getting finney block from json file.")
+        return get_finney_block_from_json_file(options.finney_block_folder)
+    else:
+        bittensor.logging.info("Getting finney block from subtensor.")
+        return get_finney_block_from_subtensor()
+
+
 def main(options):
     bittensor.logging.enable_info()
     minutes_until_get_finney_block = 0
@@ -191,14 +225,7 @@ def main(options):
         subtensor_data = []
 
         if minutes_until_get_finney_block <= 0:
-            bittensor.logging.info("Getting finney block.")
-            result = run_in_subprocess("finney")
-            try:
-                finney_block = int(result)
-            except ValueError:
-                finney_block = None
-                bittensor.logging.error("Failed to get finney block.")
-                bittensor.logging.error(result)
+            finney_block = get_finney_block(options)
             minutes_until_get_finney_block = FINNEY_INTERVAL
         else:
             bittensor.logging.info(
