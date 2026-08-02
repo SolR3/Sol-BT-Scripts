@@ -52,6 +52,12 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
+        "type",
+        choices=["stake", "reg", "vt", "vtea"],
+        help="Only display the top validators up to this number. For example, "
+                "--top 50 shows only the top 50 validators.")
+
+    parser.add_argument(
         "--top",
         type=int,
         help="Only display the top validators up to this number. For example, "

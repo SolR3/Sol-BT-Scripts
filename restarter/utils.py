@@ -3,6 +3,7 @@ import json
 import logging
 import shlex
 import subprocess
+import sys
 import threading
 import time
 
@@ -63,7 +64,7 @@ def _get_logger():
                 return s
 
         def __init__(self):
-            handler = logging.StreamHandler()
+            handler = logging.StreamHandler(sys.stdout)
             handler.setFormatter(Logger.BtDateFormatter("%(asctime)s | %(levelname)s | %(message)s"))
 
             self._logger = logging.getLogger("bittensor")
