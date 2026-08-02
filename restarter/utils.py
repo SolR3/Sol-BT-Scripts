@@ -1,8 +1,10 @@
 # Standard imports
 import json
+import logging
 import shlex
 import subprocess
 import threading
+import time
 
 # Bittensor import
 import bittensor
@@ -32,12 +34,54 @@ def send_monitor_notification(log_prefix, message):
     ]
 
     monitor_cmd_str = shlex.join(monitor_cmd)
-    bittensor.logging.info(f"{log_prefix}: Running command: '{monitor_cmd_str}'")
+    logger.info(f"{log_prefix}: Running command: '{monitor_cmd_str}'")
 
     try:
         subprocess.run(monitor_cmd, check=True)
     except subprocess.CalledProcessError as exc:
-        bittensor.logging.error(f"{log_prefix}: Failed to send discord monitor notification.")
-        bittensor.logging.error(f"{log_prefix}: '{monitor_cmd_str}' command failed with error {exc}")
+        logger.error(f"{log_prefix}: Failed to send discord monitor notification.")
+        logger.error(f"{log_prefix}: '{monitor_cmd_str}' command failed with error {exc}")
     else:
-        bittensor.logging.info(f"{log_prefix}: Discord monitor notification successfully sent.")
+        logger.info(f"{log_prefix}: Discord monitor notification successfully sent.")
+
+
+def _get_logger():
+    # bittensor <= 10
+    if hasattr(bittensor, "logging"):
+        return bittensor.logging
+
+    # bittensor >= 11
+    class Logger:
+        class BtDateFormatter(logging.Formatter):
+            def formatTime(self, record, datefmt=None):
+                created = self.converter(record.created)
+                if datefmt:
+                    s = time.strftime(datefmt, created)
+                else:
+                    s = time.strftime("%Y-%m-%d %H:%M:%S", created)
+                s += f".{int(record.msecs):03d}"
+                return s
+
+        def __init__(self):
+            handler = logging.StreamHandler()
+            handler.setFormatter(Logger.BtDateFormatter("%(asctime)s | %(levelname)s | %(message)s"))
+
+            self._logger = logging.getLogger("bittensor")
+            self._logger.addHandler(handler)
+            self._logger.propagate = False
+
+        def __getattr__(self, name):
+            if name == "_logger":
+                raise AttributeError(name)
+            return getattr(self._logger, name)
+
+        def enable_debug(self):
+            self._logger.setLevel(logging.DEBUG)
+
+        def enable_info(self):
+            self._logger.setLevel(logging.INFO)
+
+    return Logger()
+
+
+logger = _get_logger()

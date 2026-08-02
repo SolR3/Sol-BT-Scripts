@@ -9,9 +9,6 @@ import subprocess
 import time
 from typing import Type, TYPE_CHECKING
 
-# Bittensor import
-import bittensor
-
 # Local imports
 from .checker_git_repo import (
     ValidatorCheckerGitUpdateCommits,
@@ -32,6 +29,7 @@ from .constants import (
     RESTARTER_PREFIX,
 )
 from .utils import (
+    logger,
     restart_lock,
     send_monitor_notification,
 )
@@ -41,15 +39,15 @@ if TYPE_CHECKING:
 
 
 def log_info(message):
-    bittensor.logging.info(f"{RESTARTER_PREFIX}: {message}")
+    logger.info(f"{RESTARTER_PREFIX}: {message}")
 
 
 def log_warning(message):
-    bittensor.logging.warning(f"{RESTARTER_PREFIX}: {message}")
+    logger.warning(f"{RESTARTER_PREFIX}: {message}")
 
 
 def log_error(message):
-    bittensor.logging.error(f"{RESTARTER_PREFIX}: {message}")
+    logger.error(f"{RESTARTER_PREFIX}: {message}")
 
 
 @dataclass
@@ -196,9 +194,9 @@ def run(options):
     # options.do_check_blacklist_logs = False  # Temporarily force-disabling blacklist logs check
 
     if DEBUG:
-        bittensor.logging.enable_debug()
+        logger.enable_debug()
     else:
-        bittensor.logging.enable_info()
+        logger.enable_info()
 
     notify_ip_address(options)
 

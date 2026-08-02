@@ -3,13 +3,11 @@ import os
 import subprocess
 import tempfile
 
-# Bittensor import
-import bittensor
-
 # Local imports
 from .constants import RED_QM
 from .utils import (
     get_pm2_log_output_wait_timer,
+    logger,
     restart_lock,
     send_monitor_notification,
 )
@@ -28,19 +26,19 @@ class ValidatorChecker:
 
     @classmethod
     def log_info(cls, message):
-        bittensor.logging.info(f"{cls.log_prefix}: {message}")
+        logger.info(f"{cls.log_prefix}: {message}")
 
     @classmethod
     def log_error(cls, message):
-        bittensor.logging.error(f"{cls.log_prefix}: {message}")
+        logger.error(f"{cls.log_prefix}: {message}")
 
     @classmethod
     def log_warning(cls, message):
-        bittensor.logging.warning(f"{cls.log_prefix}: {message}")
+        logger.warning(f"{cls.log_prefix}: {message}")
 
     @classmethod
     def log_debug(cls, message):
-        bittensor.logging.debug(f"{cls.log_prefix}: {message}")
+        logger.debug(f"{cls.log_prefix}: {message}")
 
     def _init_setup(self, options):
         raise NotImplementedError("Must be implemented in subclasses.")
