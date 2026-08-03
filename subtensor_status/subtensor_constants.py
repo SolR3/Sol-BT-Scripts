@@ -1,7 +1,9 @@
 LOCAL_TIMEZONE = "MST7MDT"
+
 JSON_FILE_NAME = "subtensor_status.json"
 FINNEY_BLOCK_FILE_NAME = "finney_block.json"
 TIMESTAMP_FILE_NAME = "timestamp.json"
+
 LOCAL_SUBTENSORS = [
     "ws://subtensor-cali.rizzo.network:9944",
     "ws://subtensor-candyland.rizzo.network:9944",
@@ -12,4 +14,5 @@ LOCAL_SUBTENSORS = [
     "ws://subtensor-lite-archive.rizzo.network:9933",
     "ws://192.168.69.55:9944 (local archive)",
 ]
+
 FINNEY_INTERVAL = 1440  # In minutes (1 day)

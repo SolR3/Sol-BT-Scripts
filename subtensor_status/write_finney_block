@@ -5,6 +5,8 @@ import argparse
 from dataclasses import asdict
 import json
 import os
+import shlex
+import subprocess
 import sys
 import time
 
@@ -25,6 +27,11 @@ def _parse_args():
         "-j", "--json-folder",
         required=True,
         help="The json folder in which to write the finney block json file."
+    )
+
+    parser.add_argument(
+        "-t", "--transfer-to-jerky",
+        help="The json folder on the jerky (2292) VM to transfer the finney block json file."
     )
 
     return parser.parse_args()
@@ -53,6 +60,30 @@ def write_finney_block_file(finney_block_data, json_folder):
     with open(json_file, "w") as fd:
         json.dump(asdict(finney_block_data), fd, indent=4)
 
+    return json_file
+
+
+def transfer_to_jerky(source_file, dest_folder):
+    # This only works from Sol's home computer
+    transfer_command = [
+    "/home/bhorvat/bittensor/scripts/git_projects/Sol-BT-Scripts/file_transfer/ssh/file_transfer_ssh",
+    "--ssh-key", "/home/bhorvat/.ssh/bh_wsl_key",
+    "--host", "datacenter1.rizzo.network",
+    "--port", "2292",
+    "--user", "rizzo",
+    "--send",
+    "--sources", source_file,
+    "--dest", dest_folder,
+    ]
+
+    bittensor.logging.info(f"Running transfer command: {shlex.join(transfer_command)}")
+    try:
+        subprocess.run(transfer_command, check=True)
+    except subprocess.CalledProcessError as exc:
+        bittensor.logging.error(f"Command failed with error: {exc}")
+    else:
+        bittensor.logging.info("Command succeeded.")
+
 
 def main(options):
     bittensor.logging.enable_info()
@@ -78,7 +109,9 @@ def main(options):
     total_time_formatted = format_time(total_seconds)
     bittensor.logging.info(f"Finney block gathering took {total_time_formatted}.\n")
 
-    write_finney_block_file(finney_block_data, options.json_folder)
+    json_file = write_finney_block_file(finney_block_data, options.json_folder)
+    if options.transfer_to_jerky:
+        transfer_to_jerky(json_file, options.transfer_to_jerky)
 
 
 if __name__ == "__main__":
