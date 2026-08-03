@@ -1,5 +1,8 @@
 # standard imports
 import argparse
+import logging
+import sys
+import time
 
 
 # Constants
@@ -51,3 +54,18 @@ def parse_ensure_set_weights_args(args_str=None):
         )
 
     return parser.parse_args(args_str)
+
+
+def _get_logger():
+    # Create logger
+    logging.Formatter.converter = time.gmtime
+    logging.basicConfig(
+        level=logging.INFO,
+        #level=logging.DEBUG,
+        format="%(asctime)sZ %(levelname)s %(message)s",
+        stream=sys.stdout,
+    )
+    return logging.getLogger("ensure_set_weights")
+
+
+logger = _get_logger()

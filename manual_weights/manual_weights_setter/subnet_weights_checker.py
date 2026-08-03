@@ -7,7 +7,10 @@ import time
 
 # bittensor imports
 import bittensor
-from bittensor_wallet import Wallet
+from bittensor.wallet import Wallet
+
+# Local imports
+from .common import logger
 
 
 class TestWallet:
@@ -54,35 +57,31 @@ class SubnetWeightsChecker:
         self._interval_blocks = round(self._check_interval / 12) # blocks
         self._discord_notify = options.discord_notify
 
-        self._metagraphs = {}
         self._wallets = {}
         for netuid in self._netuids:
-            self._metagraphs[netuid] = bittensor.core.metagraph.AsyncMetagraph(netuid, sync=False)
             self._wallets[netuid] = Wallet(  # TestWallet(
                 name="RizzoNetwork", hotkey=f"rz{netuid:03d}",
             )
 
         random.seed()
-        self._local_subtensor_index = random.randint(
-            0, len(self._local_subtensors) - 1
-        )
+        self._local_subtensor_index = random.randint(0, len(self._local_subtensors) - 1)
         self._expected_updated_values = dict(
             [(n, self._updated_threshold) for n in self._netuids]
         )
 
         self._run()
 
-    def _log_info(self, message):
-        bittensor.logging.info(message)
+    def _log_info(self, *args):
+        logger.info(*args)
 
-    def _log_error(self, message):
-        bittensor.logging.error(message)
+    def _log_error(self, *args):
+        logger.error(*args)
 
-    def _log_warning(self, message):
-        bittensor.logging.warning(message)
+    def _log_warning(self, *args):
+        logger.warning(*args)
 
-    def _log_debug(self, message):
-        bittensor.logging.debug(message)
+    def _log_debug(self, *args):
+        logger.debug(*args)
 
     def _run(self):
         while True:
@@ -93,20 +92,20 @@ class SubnetWeightsChecker:
             sleep_interval = self._check_interval - elapsed_time
             if sleep_interval > 0:
                 self._log_info("")
-                self._log_info(f"Sleeping for {sleep_interval} seconds.")
+                self._log_info("Sleeping for %i seconds.", sleep_interval)
                 time.sleep(sleep_interval)
             else:
                 # Shouldn't ever get here
                 self._log_warning(
-                    f"Elapsed time ({elapsed_time} seconds) is greater than "
-                    f"check interval ({self._check_interval} seconds)."
+                    "Elapsed time (%i seconds) is greater than "
+                    "check interval (%i seconds).",
+                    elapsed_time, self._check_interval
                 )
 
     async def _async_run(self):
         self._log_info("")
         self._log_info(
-            "Checking updated values and determining whether to "
-            "manually set weights."
+            "Checking updated values and determining whether to manually set weights."
         )
         self._log_info("")
 
@@ -118,8 +117,8 @@ class SubnetWeightsChecker:
             else:
                 self._expected_updated_values[netuid] += self._interval_blocks
                 self._log_info(
-                    f"Not checking subnet {netuid}. Expected updated value "
-                    f"{expected_updated} < {self._updated_threshold}")
+                    "Not checking subnet %i. Expected updated value %i < %i",
+                    netuid, expected_updated, self._updated_threshold)
 
         if not netuids:
             return
@@ -132,15 +131,15 @@ class SubnetWeightsChecker:
             network = f"ws://subtensor-{network_name}.rizzo.network:9944"
 
             self._log_info("")
-            self._log_info(f"Connecting to subtensor network: {network}")
+            self._log_info("Connecting to subtensor network: %s", network)
             try:
-                async with bittensor.AsyncSubtensor(network=network) as subtensor:
+                async with bittensor.Subtensor(network=network) as subtensor:
                     await self._check_and_set_weights(subtensor, netuids)
                 break
             except Exception as err:
                 self._log_error("")
-                self._log_error(f"Subtensor connection failed on '{network}'")
-                self._log_error(f"{type(err).__name__}: {err}")
+                self._log_error("Subtensor connection failed on '%s'", network)
+                self._log_error("%s: %s", type(err).__name__, err)
                 self._log_error("")
                 self._log_error("Rotating subtensors and trying again.")
                 time.sleep(1)
@@ -148,136 +147,151 @@ class SubnetWeightsChecker:
     async def _check_and_set_weights(self, subtensor, netuids):
         # Get the block to pass to async calls so everything is in sync
         # and sync the metagraph for each netuid.
-        block = await subtensor.block
-        await asyncio.gather(
-            *[
-                self._metagraphs[netuid].sync(block=block, lite=False, subtensor=subtensor)
-                for netuid in netuids
-            ]
+        block = await subtensor.block()
+        metagraphs = await asyncio.gather(
+            *[subtensor.subnets.metagraph(netuid, block=block) for netuid in netuids]
         )
 
-        for netuid in netuids:
+        for ni, netuid in enumerate(netuids):
             self._log_info("")
-            self._log_info(f"Checking subnet {netuid}")
+            self._log_info("Checking subnet %i", netuid)
 
-            metagraph = self._metagraphs[netuid]
+            metagraph = metagraphs[ni]
             rizzo_hotkey = self._wallets[netuid].hotkey.ss58_address
             rizzo_uid = self._get_rizzo_uid(metagraph, rizzo_hotkey)
             if rizzo_uid is None:
-                self._log_warning(
-                    f"Rizzo validator is not running on subnet {netuid}."
-                )
+                self._log_warning("Rizzo validator is not running on subnet %i.", netuid)
                 continue
 
-            rizzo_updated = int(
-                metagraph.block - metagraph.last_update[rizzo_uid]
-            )
-            self._log_info(f"Rizzo Updated is {rizzo_updated} blocks.")
+            rizzo_updated = metagraph.block - metagraph.neurons[rizzo_uid].last_update
+            self._log_info("Rizzo Updated is %i blocks.", rizzo_updated)
 
             # If the rizzo updated value is greater than the weights threshold
             # then manually set weights.
             if rizzo_updated >= self._updated_threshold:
-                self._log_info(f"Updated value {rizzo_updated} "
-                                f">= {self._updated_threshold}")
-                self._log_info(
-                    f"Manually setting weights on subnet {netuid}."
-                )
-                await self._set_weights(
-                    subtensor, metagraph, netuid, rizzo_uid, rizzo_updated
-                )
+                self._log_info("Updated value %i >= %i", rizzo_updated, self._updated_threshold)
+                self._log_info("Manually setting weights on subnet %i.", netuid)
+                await self._set_weights(subtensor, netuid, rizzo_uid, rizzo_updated)
             else:
                 self._expected_updated_values[netuid] = \
                     rizzo_updated + self._interval_blocks
-                self._log_info(f"Updated value {rizzo_updated} "
-                                f"< {self._updated_threshold}")
-                self._log_info(f"Not setting weights on subnet {netuid}.")
+                self._log_info("Updated value %i < %i", rizzo_updated, self._updated_threshold)
+                self._log_info("Not setting weights on subnet %i.", netuid)
 
     def _get_rizzo_uid(self, metagraph, rizzo_hotkey):
         try:
             uid = metagraph.hotkeys.index(rizzo_hotkey)
         except ValueError:
             self._log_warning(
-                f"Rizzo hotkey {rizzo_hotkey} is not found on subnet {metagraph.netuid}."
+                "Rizzo hotkey %s is not found on subnet %i.", rizzo_hotkey, metagraph.netuid
             )
             return None
 
-        if not metagraph.validator_permit[uid]:
+        if not metagraph.neurons[uid].validator_permit:
             self._log_warning(
-                f"Rizzo hotkey {rizzo_hotkey} does not have a validator permit "
-                f"on subnet {metagraph.netuid}."
+                "Rizzo hotkey %s does not have a validator permit on subnet %i.",
+                rizzo_hotkey, metagraph.netuid
             )
             return None
 
         return uid
 
-    async def _set_weights(
-        self, subtensor, metagraph, netuid, rizzo_uid, rizzo_updated
-    ):
+    async def _set_weights(self, subtensor, netuid, rizzo_uid, rizzo_updated):
         # Get weights.
-        rizzo_weights = metagraph.weights[rizzo_uid]
-        uids = metagraph.uids[rizzo_weights>0.0]
-        weights = rizzo_weights[rizzo_weights>0.0]
-        if uids.size == 0:
-            self._log_info("Previous weights are all 0. Determining burn weights.")
-            uids, weights = await self._get_burn_weights(subtensor, netuid)
+        all_weights = await subtensor.weights.weights(netuid=netuid)
+        if rizzo_uid in all_weights:
+            self._log_info("Using previous weights.")
+            weights = all_weights[rizzo_uid]
+        else:
+            self._log_info("No previous weights are set. Determining burn weights.")
+            weights = await self._get_burn_weights(subtensor, netuid)
 
-        self._log_info("Setting the following weights:")
-        self._log_info(f"    uids = {uids}")
-        self._log_info(f"    weights = {weights}")
-
-        # Get the weights version key.
-        version_key_obj = await subtensor.query_subtensor(
-            "WeightsVersionKey",
-            params=[netuid],
-        )
-        version_key = version_key_obj.value
-        self._log_debug(f"Subnet {netuid} Weights Version Key: {version_key}")
-
-        # Set weights.
-        success, message = await subtensor.set_weights(
-            self._wallets[netuid],
-            netuid,
-            uids,
-            weights,
-            version_key=version_key,
-            wait_for_inclusion=True,
-            wait_for_finalization=True,
-        )
-        # success, message = (True, "Ignore.")
-        if not success:
-            self._expected_updated_values[netuid] += self._interval_blocks
+        if not weights:
             self._log_error(
-                f"Error setting weights on subnet {netuid}: {message}"
+                "Could not determine weights to set on subnet %i. "
+                "Not setting weights.", netuid
             )
             self._send_monitor_notification(
-                f"Failed to manually set weights on subnet {netuid}: {message}"
+                f"Failed to manually set weights on subnet {netuid}: "
+                "Could not determine weights to set."
             )
+            return
+
+        self._log_info("Setting the following weights:")
+        self._log_info("    weights = %s", weights)
+
+        # Get the weights version key.
+        version_key = await subtensor.query(
+            bittensor.storage.SubtensorModule.WeightsVersionKey,
+            params=[netuid],
+        )
+        self._log_debug("Subnet %i Weights Version Key: %i", netuid, version_key)
+
+        # Set weights.
+        try:
+            result = await subtensor.execute(
+                bittensor.SetWeights(
+                    netuid=netuid,
+                    weights=weights,
+                    version_key=version_key
+                ),
+                self._wallets[netuid],
+                retries=2
+            )
+            result.raise_for_failure()
+
+        except bittensor.ChainError as exc:
+            self._expected_updated_values[netuid] += self._interval_blocks
+            self._log_error(
+                "Error setting weights on subnet %i: %s: %s",
+                netuid, type(exc).__name__, exc
+            )
+            self._send_monitor_notification(
+                f"Failed to manually set weights on subnet {netuid}: {type(exc).__name__}: {exc}"
+            )
+
+        if not result.success:
+            self._expected_updated_values[netuid] += self._interval_blocks
+            self._log_error(
+                "Error setting weights on subnet %i: %s", netuid, result.message
+            )
+            self._send_monitor_notification(
+                f"Failed to manually set weights on subnet {netuid}: {result.message}"
+            )
+
         else:
             self._expected_updated_values[netuid] = self._interval_blocks
-            self._log_info(f"Weights successfully set on subnet {netuid}.")
+            self._log_info("Weights successfully set on subnet %i.", netuid)
             self._send_monitor_notification(
                 f"Manually set weights on subnet {netuid} - Updated value was {rizzo_updated}"
             )
 
     async def _get_burn_weights(self, subtensor, netuid):
         # Get the subtensor owner hotkey
-        owner_hotkey = await subtensor.query_subtensor(
-            "SubnetOwnerHotkey",
+        owner_hotkey = await subtensor.query(
+            bittensor.storage.SubtensorModule.SubnetOwnerHotkey,
             params=[netuid],
         )
-        self._log_debug(f"Subnet {netuid} Owner Hotkey: {owner_hotkey}")
+        self._log_debug("Subnet %i Owner Hotkey: %s", netuid, owner_hotkey)
 
         # Get the UID of this hotkey
-        owner_uid = await subtensor.get_uid_for_hotkey_on_subnet(
-            hotkey_ss58=owner_hotkey,
-            netuid=netuid,
-        )
-        self._log_debug(f"Subnet {netuid} Owner UID: {owner_uid}")
+        try:
+            owner_uid = await subtensor.neurons.uid(
+                hotkey_ss58=owner_hotkey,
+                netuid=netuid
+            )
+        except ValueError:
+            self._log_error(
+                "Could not find owner uid from owner hotkey %s on subnet %i",
+                owner_hotkey, netuid
+            )
+            return None
 
-        uids = [owner_uid]
-        weights = [1.0]
+        self._log_debug("Subnet %i Owner UID: %i", netuid, owner_uid)
 
-        return uids, weights
+        weights = {owner_uid: 1}
+
+        return weights
 
     def _send_monitor_notification(self, message):
         if not self._discord_notify:
@@ -291,12 +305,11 @@ class SubnetWeightsChecker:
             "-d", payload, self._discord_monitor_url
         ]
         monitor_cmd_str = " ".join(monitor_cmd)
-        self._log_info(f"Running command: '{monitor_cmd_str}'")
+        self._log_info("Running command: '%s'", monitor_cmd_str)
         try:
             subprocess.run(monitor_cmd, check=True)
         except subprocess.CalledProcessError as exc:
             self._log_error("Failed to send discord monitor notification.")
-            self._log_error(
-                f"'{monitor_cmd_str}' command failed with error {exc}")
+            self._log_error("'%s' command failed with error %s", monitor_cmd_str, exc)
         else:
             self._log_info("Discord monitor notification successfully sent.")

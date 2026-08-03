@@ -42,7 +42,6 @@ def main(options):
     with open(data_file, "r") as fp:
         burn_subnets = json.load(fp)
 
-    # even out the restarts across two epochs
     num_burn_subnets = len(burn_subnets)
     wait_seconds = options.interval * 12
     for i, burn_subnet in enumerate(burn_subnets):

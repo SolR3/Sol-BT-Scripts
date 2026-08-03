@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 
 # local imports
-from manual_weights_setter.common import parse_ensure_set_weights_args
+from .common import parse_ensure_set_weights_args
 
 
 SCRIPT_NAME = "ensure_set_weights"

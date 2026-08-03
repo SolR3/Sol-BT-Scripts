@@ -2,14 +2,13 @@
 import argparse
 import logging
 import multiprocessing
-import os
 import random
 import sys
 import time
 
 # Bittensor imports
 import bittensor as bt
-from bittensor_wallet import Wallet
+from bittensor.wallet import Wallet
 
 
 # Constants
@@ -30,17 +29,16 @@ LOCAL_SUBTENSORS = [
     "titan",
 ]
 
-
 # Create logger
 logging.Formatter.converter = time.gmtime
 logging.basicConfig(
     level=logging.INFO,
     #level=logging.DEBUG,
     format="%(asctime)sZ %(levelname)s %(message)s",
+    stream=sys.stdout,
 )
 
 logger = logging.getLogger(__name__)
-
 
 # Create Mulitprocessing queue
 mp_queue = multiprocessing.Queue()
@@ -55,9 +53,6 @@ class BurnValidator:
         self.local_subtensor_index = random.randint(0, len(LOCAL_SUBTENSORS) - 1)
 
     def get_config(self):
-        # We need this now so that the bittensor.Config will pick up our parser args as well
-        os.environ["BT_NO_PARSE_CLI_ARGS"] = "false"
-
         # Set up the configuration parser.
         parser = argparse.ArgumentParser(
             description="Subnet Validator",
@@ -107,22 +102,12 @@ class BurnValidator:
             help="Dummy arg. No longer used."
         )
 
-        # Adds subtensor specific arguments.
-        bt.Subtensor.add_args(run_command_parser)
-
-        # Adds wallet specific arguments.
-        Wallet.add_args(run_command_parser)
-
-        # Parse the config.
-        try:
-            config = bt.Config(parser)
-        except ValueError as e:
-            logger.error("Error parsing config: %s", e)
-            sys.exit(1)
+        # Parse the args.
+        config = parser.parse_args()
 
         # Hard-code Rizzo wallet
-        config.wallet.name = "RizzoNetwork"
-        config.wallet.hotkey = f"rz{config.netuid:03d}"
+        config.wallet_name = "RizzoNetwork"
+        config.wallet_hotkey = f"rz{config.netuid:03d}"
 
         return config
 
@@ -130,29 +115,28 @@ class BurnValidator:
         if self.config.local_subtensor is False:
             return
 
-        self.local_subtensor_index = \
-                (self.local_subtensor_index + 1) % len(LOCAL_SUBTENSORS)
+        self.local_subtensor_index = (self.local_subtensor_index + 1) % len(LOCAL_SUBTENSORS)
 
         network_name = (
             self.config.local_subtensor or LOCAL_SUBTENSORS[self.local_subtensor_index]
         )
-        self.config.subtensor.network = \
+        self.config.subtensor_network = \
             f"ws://subtensor-{network_name}.rizzo.network:9944"
 
     def _get_tempo_data(self, subtensor):
-        curr_block = subtensor.get_current_block()
+        curr_block = subtensor.block
 
-        tempo = subtensor.query_subtensor(
-            "Tempo",
+        tempo = subtensor.query(
+            bt.storage.SubtensorModule.Tempo,
             params=[self.config.netuid],
-        ).value
+        )
         logger.info("Tempo: %s", tempo)
 
-        blocks_since_last_step = subtensor.query_subtensor(
-            "BlocksSinceLastStep",
+        blocks_since_last_step = subtensor.query(
+            bt.storage.SubtensorModule.BlocksSinceLastStep,
             block=curr_block,
             params=[self.config.netuid],
-        ).value
+        )
 
         logger.info("Blocks Since Last Step: %s", blocks_since_last_step)
         return tempo, blocks_since_last_step
@@ -178,35 +162,31 @@ class BurnValidator:
         logger.info("The next perfect weight setting opportunity is in %s blocks...", blocks_to_wait)
         return blocks_to_wait
 
-
-    def check_registration(self, subtensor, wallet):
-        registered = subtensor.is_hotkey_registered_on_subnet(
-            hotkey_ss58=wallet.hotkey.ss58_address,
-            netuid=self.config.netuid,
-        )
-        logger.info("Registered: %s", registered)
-
-        if not registered:
+    def ensure_registered_and_validator_permit(self, subtensor, wallet):
+        try:
+            this_uid = subtensor.neurons.uid(
+                hotkey_ss58=wallet.hotkey.ss58_address,
+                netuid=self.config.netuid
+            )
+        except ValueError:
             logger.info("Not registered, wait until next epoch...")
-            return False
+            return None
 
-        return True
+        if this_uid is None:
+            logger.info("Not registered, wait until next epoch...")
+            return None
 
-    def ensure_validator_permit(self, subtensor, wallet):
-        validator_permits = subtensor.query_subtensor(
-            "ValidatorPermit",
+        logger.info("Validator UID: %i", this_uid)
+
+        validator_permits = subtensor.query(
+            bt.storage.SubtensorModule.ValidatorPermit,
             params=[self.config.netuid],
-        ).value
-        this_uid = subtensor.get_uid_for_hotkey_on_subnet(
-            hotkey_ss58=wallet.hotkey.ss58_address,
-            netuid=self.config.netuid,
         )
-        logger.info("Validator UID: %s", this_uid)
 
         try:
             permit_granted = validator_permits[this_uid]
         except (IndexError, KeyError, TypeError) as e:
-            logger.error("Error accessing validator permit for UID %s: %s", this_uid, e)
+            logger.error("Error accessing validator permit for UID %i: %s", this_uid, e)
             return None
 
         logger.info("Validator Permit: %s", permit_granted)
@@ -218,16 +198,24 @@ class BurnValidator:
         return None
 
     def get_weights_version_key(self, subtensor):
-        version_key = subtensor.query_subtensor(
-            "WeightsVersionKey",
+        version_key = subtensor.query(
+            bt.storage.SubtensorModule.WeightsVersionKey,
             params=[self.config.netuid],
-        ).value
+        )
         logger.info("Weights Version Key: %s", version_key)
         return version_key
 
+    def get_mechids(self, subtensor):
+        mech_count = subtensor.subnets.mechanism_count(self.config.netuid)
+        if mech_count == 1:
+            return [0]
+
+        mech_split = subtensor.subnets.mechanism_emission_split(self.config.netuid)
+        return sorted(range(mech_count), key=lambda m: bt.settings.U16_MAX - mech_split[m])
+
     def fetch_neurons(self, subtensor):
         try:
-            neurons = subtensor.neurons(netuid=self.config.netuid)
+            neurons = subtensor.subnets.metagraph(self.config.netuid).neurons
         except Exception as e:
             logger.exception("Error fetching neurons: %s", e)
             return []
@@ -237,109 +225,152 @@ class BurnValidator:
 
         return neurons
 
-    # TODO: Clean this method up. Test it on sn20, sn86, and another subnet.
+    # TODO: Clean this method up.
     def get_burn_uid(self, subtensor, neurons):
-        try:
-            subnet_info = subtensor.get_subnet_info(self.config.netuid)
-            owner_coldkey = getattr(subnet_info, "owner_ss58", None)
-        except Exception as e:
-            logger.error("Error retrieving subnet info: %s", e)
-            owner_coldkey = None
-
-        if owner_coldkey is None:
-            logger.warning("Owner coldkey missing, attempting fallback via owner hotkey lookup")
-
-            sn_owner_hotkey = subtensor.query_subtensor(
-                "SubnetOwnerHotkey",
-                params=[self.config.netuid],
-            )
-            logger.info("SN Owner Hotkey: %s", sn_owner_hotkey)
-
-            sn_owner_uid = subtensor.get_uid_for_hotkey_on_subnet(
-                hotkey_ss58=sn_owner_hotkey,
-                netuid=self.config.netuid,
-            )
-            logger.info("SN Owner UID: %s", sn_owner_uid)
-
-            owner_neuron = None
-            owner_hotkey_str = str(sn_owner_hotkey)
-            for neuron in neurons:
-                neuron_hotkey = getattr(neuron, "hotkey", None) or getattr(neuron, "hotkey_ss58", None)
-                if neuron_hotkey == owner_hotkey_str:
-                    owner_neuron = neuron
-                    break
-
-            if owner_neuron is None:
-                logger.warning("Owner neuron not found in neuron list, falling back to owner UID")
-                return sn_owner_uid
-
-            owner_coldkey = getattr(owner_neuron, "coldkey", None) or getattr(owner_neuron, "coldkey_ss58", None)
-            if owner_coldkey is None:
-                logger.warning("Owner coldkey missing on neuron, falling back to owner UID")
-                return sn_owner_uid
-
-        owner_neurons = [
-            neuron
-            for neuron in neurons
-            if (getattr(neuron, "coldkey", None) or getattr(neuron, "coldkey_ss58", None)) == owner_coldkey
-        ]
-
-        if not owner_neurons:
-            logger.warning("No neurons found with owner coldkey, falling back to owner UID")
-            sn_owner_hotkey = subtensor.query_subtensor(
-                "SubnetOwnerHotkey",
-                params=[self.config.netuid],
-            )
-            logger.info("SN Owner Hotkey: %s", sn_owner_hotkey)
-            sn_owner_uid = subtensor.get_uid_for_hotkey_on_subnet(
-                hotkey_ss58=sn_owner_hotkey,
-                netuid=self.config.netuid,
-            )
-            logger.info("SN Owner UID: %s", sn_owner_uid)
-            return sn_owner_uid
-
-        logger.info("found %i owner neurons", len(owner_neurons))
-        # The registration_block is "inf" for all neurons. Falling back to using
-        # the owner hotkey instead.
-        # # Prefer the neuron that registered earliest on the subnet.
-        # burn_candidate = min(
-        #     owner_neurons,
-        #     key=lambda neuron: getattr(neuron, "registration_block", float("inf"))
-        # )
-        sn_owner_hotkey = subtensor.query_subtensor(
-            "SubnetOwnerHotkey",
+        owner_hotkey = subtensor.query(
+            bt.storage.SubtensorModule.SubnetOwnerHotkey,
             params=[self.config.netuid],
         )
-        logger.info("SN Owner Hotkey: %s", sn_owner_hotkey)
-        sn_owner_uid = subtensor.get_uid_for_hotkey_on_subnet(
-            hotkey_ss58=sn_owner_hotkey,
-            netuid=self.config.netuid,
-        )
-        if sn_owner_uid is None:
-            try:
-                sn_owner_uid = subtensor.metagraph(self.config.netuid).coldkeys.index(owner_coldkey)
-            except ValueError:
-                pass  # I don't know what to do here.
-        logger.info("SN Owner UID: %s", sn_owner_uid)
+        logger.info("Owner Hotkey: %s", owner_hotkey)
+    
+        try:
+            owner_uid = subtensor.neurons.uid(
+                hotkey_ss58=owner_hotkey,
+                netuid=self.config.netuid
+            )
+        except ValueError:
+            # TODO - Decide what to do here. Find the owner coldkey uid that registered the earliest?
 
-        burn_candidate = None
-        for neuron in owner_neurons:
-            neuron_hotkey = getattr(neuron, "hotkey", None) or getattr(neuron, "hotkey_ss58", None)
-            if neuron_hotkey == sn_owner_hotkey:
-                burn_candidate = neuron
-                break
+            # logger.info("Owner hotkey not registered. Could not find owner uid.")
+            # return None
 
-        if burn_candidate is None:
-            logger.warning("Could not find a burn candidate, falling back to owner UID")
-            return sn_owner_uid
+            logger.info("Owner hotkey not registered, attempting fallback via owner coldkey lookup.")
+            owner_coldkey = subtensor.query(
+                bt.storage.SubtensorModule.SubnetOwner,
+                params=[self.config.netuid],
+            )
+            logger.info("Owner Coldkey: %s", owner_coldkey)
 
-        burn_uid = getattr(burn_candidate, "uid", None)
-        if burn_uid is None:
-            logger.warning("Burn candidate missing UID, falling back to owner UID")
-            return sn_owner_uid
+            owner_neurons = [
+                neuron for neuron in neurons if neuron.coldkey == owner_coldkey
+            ]
+            if not owner_neurons:
+                logger.info("Owner coldkey not registered. Could not find owner uid.")
+                return None
 
-        logger.info("Selected burn UID %s from owner coldkey %s", burn_uid, owner_coldkey)
-        return burn_uid
+            oldest_owner_neuron = min(
+                owner_neurons,
+                key=lambda neuron: neuron.block_at_registration
+            )
+            owner_uid = oldest_owner_neuron.uid
+
+        logger.info("Owner UID: %i", owner_uid)
+        return owner_uid
+
+        # I'm not sure what all it's doing here but it seems like more than necessary.
+        # Simplifying this for now until/unless a subnet happens to not work.
+        #
+        # try:
+        #     subnet_info = subtensor.get_subnet_info(self.config.netuid)
+        #     owner_coldkey = getattr(subnet_info, "owner_ss58", None)
+        # except Exception as e:
+        #     logger.error("Error retrieving subnet info: %s", e)
+        #     owner_coldkey = None
+
+        # if owner_coldkey is None:
+        #     logger.warning("Owner coldkey missing, attempting fallback via owner hotkey lookup")
+
+        #     sn_owner_hotkey = subtensor.query_subtensor(
+        #         "SubnetOwnerHotkey",
+        #         params=[self.config.netuid],
+        #     )
+        #     logger.info("SN Owner Hotkey: %s", sn_owner_hotkey)
+
+        #     sn_owner_uid = subtensor.get_uid_for_hotkey_on_subnet(
+        #         hotkey_ss58=sn_owner_hotkey,
+        #         netuid=self.config.netuid,
+        #     )
+        #     logger.info("SN Owner UID: %s", sn_owner_uid)
+
+        #     owner_neuron = None
+        #     owner_hotkey_str = str(sn_owner_hotkey)
+        #     for neuron in neurons:
+        #         neuron_hotkey = getattr(neuron, "hotkey", None) or getattr(neuron, "hotkey_ss58", None)
+        #         if neuron_hotkey == owner_hotkey_str:
+        #             owner_neuron = neuron
+        #             break
+
+        #     if owner_neuron is None:
+        #         logger.warning("Owner neuron not found in neuron list, falling back to owner UID")
+        #         return sn_owner_uid
+
+        #     owner_coldkey = getattr(owner_neuron, "coldkey", None) or getattr(owner_neuron, "coldkey_ss58", None)
+        #     if owner_coldkey is None:
+        #         logger.warning("Owner coldkey missing on neuron, falling back to owner UID")
+        #         return sn_owner_uid
+
+        # owner_neurons = [
+        #     neuron
+        #     for neuron in neurons
+        #     if (getattr(neuron, "coldkey", None) or getattr(neuron, "coldkey_ss58", None)) == owner_coldkey
+        # ]
+
+        # if not owner_neurons:
+        #     logger.warning("No neurons found with owner coldkey, falling back to owner UID")
+        #     sn_owner_hotkey = subtensor.query_subtensor(
+        #         "SubnetOwnerHotkey",
+        #         params=[self.config.netuid],
+        #     )
+        #     logger.info("SN Owner Hotkey: %s", sn_owner_hotkey)
+        #     sn_owner_uid = subtensor.get_uid_for_hotkey_on_subnet(
+        #         hotkey_ss58=sn_owner_hotkey,
+        #         netuid=self.config.netuid,
+        #     )
+        #     logger.info("SN Owner UID: %s", sn_owner_uid)
+        #     return sn_owner_uid
+
+        # logger.info("found %i owner neurons", len(owner_neurons))
+        # # The registration_block is "inf" for all neurons. Falling back to using
+        # # the owner hotkey instead.
+        # # # Prefer the neuron that registered earliest on the subnet.
+        # # burn_candidate = min(
+        # #     owner_neurons,
+        # #     key=lambda neuron: getattr(neuron, "registration_block", float("inf"))
+        # # )
+        # sn_owner_hotkey = subtensor.query_subtensor(
+        #     "SubnetOwnerHotkey",
+        #     params=[self.config.netuid],
+        # )
+        # logger.info("SN Owner Hotkey: %s", sn_owner_hotkey)
+        # sn_owner_uid = subtensor.get_uid_for_hotkey_on_subnet(
+        #     hotkey_ss58=sn_owner_hotkey,
+        #     netuid=self.config.netuid,
+        # )
+        # if sn_owner_uid is None:
+        #     try:
+        #         sn_owner_uid = subtensor.metagraph(self.config.netuid).coldkeys.index(owner_coldkey)
+        #     except ValueError:
+        #         pass  # I don't know what to do here.
+        # logger.info("SN Owner UID: %s", sn_owner_uid)
+
+        # burn_candidate = None
+        # for neuron in owner_neurons:
+        #     neuron_hotkey = getattr(neuron, "hotkey", None) or getattr(neuron, "hotkey_ss58", None)
+        #     if neuron_hotkey == sn_owner_hotkey:
+        #         burn_candidate = neuron
+        #         break
+
+        # if burn_candidate is None:
+        #     logger.warning("Could not find a burn candidate, falling back to owner UID")
+        #     return sn_owner_uid
+
+        # burn_uid = getattr(burn_candidate, "uid", None)
+        # if burn_uid is None:
+        #     logger.warning("Burn candidate missing UID, falling back to owner UID")
+        #     return sn_owner_uid
+
+        # logger.info("Selected burn UID %s from owner coldkey %s", burn_uid, owner_coldkey)
+        # return burn_uid
 
     def determine_burn_uid(self, subtensor, neurons):
         if self.config.target_uid is not None:
@@ -347,20 +378,22 @@ class BurnValidator:
             return self.config.target_uid
 
         burn_uid = self.get_burn_uid(subtensor, neurons)
-        logger.info("Auto-detected burn UID: %s", burn_uid)
+        if burn_uid is None:
+            logger.info("Could not auto-detected burn UID.")
+        else:
+            logger.info("Auto-detected burn UID: %s", burn_uid)
         return burn_uid
 
     def get_min_allowed_weights(self, subtensor):
         try:
-            response = subtensor.query_subtensor(
-                "MinAllowedWeights",
+            value = subtensor.query(
+                bt.storage.SubtensorModule.MinAllowedWeights,
                 params=[self.config.netuid],
             )
         except Exception as e:
             logger.error("Error fetching MinAllowedWeights: %s", e)
             return 1
 
-        value = getattr(response, "value", response)
         try:
             return max(int(value), 1)
         except (TypeError, ValueError):
@@ -369,20 +402,19 @@ class BurnValidator:
 
     def get_max_weight_limit(self, subtensor):
         try:
-            response = subtensor.query_subtensor(
-                "MaxWeightsLimit",
+            value = subtensor.query(
+                bt.storage.SubtensorModule.MaxWeightsLimit,
                 params=[self.config.netuid],
             )
         except Exception as e:
             logger.error("Error fetching MaxWeightsLimit: %s", e)
-            return 65535
+            return bt.settings.U16_MAX
 
-        value = getattr(response, "value", response)
         try:
             return max(int(value), 1)
         except (TypeError, ValueError):
             logger.warning("Unexpected MaxWeightsLimit value: %s", value)
-            return 65535
+            return bt.settings.U16_MAX
 
     def select_epsilon_uids(self, neurons, this_uid, burn_uid, min_allowed_weights):
         epsilon_target = max(min_allowed_weights - 1, 0)
@@ -401,21 +433,18 @@ class BurnValidator:
             return epsilon_uids
 
         validator_candidates = [
-            neuron
-            for neuron in neurons
-            if getattr(neuron, "is_validator", None)
-            or getattr(neuron, "validator_permit", False)
+            neuron for neuron in neurons if neuron.validator_permit
         ]
 
         validator_candidates.sort(
-            key=lambda neuron: float(getattr(neuron, "stake", 0) or 0),
+            key=lambda neuron: neuron.total_stake.amount,
             reverse=True,
         )
 
         ordered_candidate_uids = []
         my_index = None
         for candidate in validator_candidates:
-            candidate_uid = getattr(candidate, "uid", None)
+            candidate_uid = candidate.uid
             if candidate_uid is None or candidate_uid == burn_uid:
                 continue
             if candidate_uid not in ordered_candidate_uids:
@@ -440,7 +469,7 @@ class BurnValidator:
 
         if len(epsilon_uids) < epsilon_target:
             for neuron in neurons:
-                candidate_uid = getattr(neuron, "uid", None)
+                candidate_uid = neuron.uid
                 if (
                     candidate_uid is None
                     or candidate_uid in excluded
@@ -455,20 +484,21 @@ class BurnValidator:
         return epsilon_uids
 
     def prepare_weight_payload(self, subtensor, neurons, burn_uid, this_uid):
-        subnet_n = subtensor.query_subtensor(
-            "SubnetworkN",
-            params=[self.config.netuid],
-        ).value
-        logger.info("Subnet N: %s", subnet_n)
+        # Commenting this. It doesn't seem like it's needed.
+        # subnet_n = subtensor.query(
+        #     bt.storage.SubtensorModule.SubnetworkN,
+        #     params=[self.config.netuid],
+        # )
+        # logger.info("Subnet N: %s", subnet_n)
 
         min_allowed_weights = self.get_min_allowed_weights(subtensor)
         logger.info("Min Allowed Weights: %s", min_allowed_weights)
 
+        if min_allowed_weights == 1:
+            return {burn_uid: 1}
+
         max_weight_limit = self.get_max_weight_limit(subtensor)
         logger.info("Max Weight Limit: %s", max_weight_limit)
-
-        if min_allowed_weights == 1:
-            return [burn_uid], [1.0]
 
         epsilon_uids = self.select_epsilon_uids(
             neurons=neurons,
@@ -480,36 +510,38 @@ class BurnValidator:
         epsilon_uids = epsilon_uids[: max(min_allowed_weights - 1, 0)]
         logger.info("Epsilon UIDs: %s", epsilon_uids)
 
-        uids = [burn_uid] + epsilon_uids
-        weights = [max_weight_limit] + [1] * len(epsilon_uids)
-        return uids, weights
+        weights = {burn_uid: max_weight_limit}
+        weights.update({u: 1 for u in epsilon_uids})
+        return weights
 
-    def submit_weights(self, subtensor, wallet, uids, weights, version_key):
+    def submit_weights(self, subtensor, wallet, weights, mechids, version_key):
         any_success = False
 
-        mech_count = subtensor.get_mechanism_count(self.config.netuid)
-        mech_split = subtensor.get_mechanism_emission_split(self.config.netuid)
-        if mech_count == 1:
-            mechids = [0]
-        else:
-            mechids = sorted(range(mech_count), key=lambda m: 100 - mech_split[m])
-
         for mechid in mechids:
-            success, message = subtensor.set_weights(
-                wallet,
-                self.config.netuid,
-                uids,
-                weights,
-                mechid=mechid,
-                version_key=version_key,
-                wait_for_inclusion=True,
-                wait_for_finalization=True,
-            )
-            if not success:
-                logger.error("Error setting weights on mechanism %i: %s", mechid, message)
+            try:
+                result = subtensor.execute(
+                    bt.SetWeights(
+                        netuid=self.config.netuid,
+                        weights=weights,
+                        mechid=mechid,
+                        version_key=version_key
+                    ),
+                    wallet,
+                    retries=2
+                ).raise_for_failure()
+
+            except bt.ChainError as exc:
+                logger.error(
+                    "Error setting weights on mechanism %i: %s: %s",
+                    mechid, type(exc).__name__, exc)
+
             else:
-                logger.info("Weights set on mechanism %i.", mechid)
-            any_success |= success
+                if not result.success:
+                    logger.error("Error setting weights on mechanism %i: %s", mechid, result.message)
+                else:
+                    logger.info("Weights set on mechanism %i.", mechid)
+
+                any_success |= result.success
 
         return any_success
 
@@ -518,24 +550,23 @@ class BurnValidator:
         # Must initialize it here rather than making it an object variable
         # when running in subprocess mode. Must run in subprocess mode to
         # reduce memory leaks due to the subtensor connection.
-        wallet = Wallet(config=self.config)
+        wallet = Wallet(name=self.config.wallet_name, hotkey=self.config.wallet_hotkey)
         logger.info("Wallet: %s", wallet)
 
         # Initialize subtensor.
-        with bt.Subtensor(config=self.config) as subtensor:
+        with bt.Subtensor(network=self.config.subtensor_network) as subtensor:
             logger.info("Subtensor: %s", subtensor)
 
-            # Check if registered.
-            if not self.check_registration(subtensor, wallet):
-                return self.get_blocks_until_next_epoch(subtensor)
-
-            # Check Validator Permit
-            this_uid = self.ensure_validator_permit(subtensor, wallet)
+            # Check if registered and has validator permit
+            this_uid = self.ensure_registered_and_validator_permit(subtensor, wallet)
             if this_uid is None:
                 return self.get_blocks_until_next_epoch(subtensor)
 
             # Get the weights version key.
-            version_key = self.get_weights_version_key(subtensor)  # TODO: just set it to max
+            version_key = self.get_weights_version_key(subtensor)
+
+            # Get the mechids.
+            mechids = self.get_mechids(subtensor)
 
             # Get neurons
             neurons = self.fetch_neurons(subtensor)
@@ -545,13 +576,14 @@ class BurnValidator:
 
             # Get the burn uid
             burn_uid = self.determine_burn_uid(subtensor, neurons)
+            if burn_uid is None:
+                return self.get_blocks_until_next_epoch(subtensor)
 
             # Get the weights to set
-            uids, weights = self.prepare_weight_payload(subtensor, neurons, burn_uid, this_uid)
+            weights = self.prepare_weight_payload(subtensor, neurons, burn_uid, this_uid)
 
             # Set weights
-            # TODO: should retry without ensuring vpermit again, version key etc
-            if self.submit_weights(subtensor, wallet, uids, weights, version_key):
+            if self.submit_weights(subtensor, wallet, weights, mechids, version_key):
                 pause = BLOCK_TIME * DELTA
                 logger.info("sleeping %i seconds after setting weights", pause)
                 time.sleep(pause)
