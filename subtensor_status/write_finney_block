@@ -66,14 +66,15 @@ def write_finney_block_file(finney_block_data, json_folder):
 def transfer_to_jerky(source_file, dest_folder):
     # This only works from Sol's home computer
     transfer_command = [
-    "/home/bhorvat/bittensor/scripts/git_projects/Sol-BT-Scripts/file_transfer/ssh/file_transfer_ssh",
-    "--ssh-key", "/home/bhorvat/.ssh/bh_wsl_key",
-    "--host", "datacenter1.rizzo.network",
-    "--port", "2292",
-    "--user", "rizzo",
-    "--send",
-    "--sources", source_file,
-    "--dest", dest_folder,
+        "/home/bhorvat/venv-bittensor/bin/python",
+        "/home/bhorvat/bittensor/scripts/git_projects/Sol-BT-Scripts/file_transfer/ssh/file_transfer_ssh",
+        "--ssh-key", "/home/bhorvat/.ssh/bh_wsl_key",
+        "--host", "datacenter1.rizzo.network",
+        "--port", "2292",
+        "--user", "rizzo",
+        "--send",
+        "--sources", source_file,
+        "--dest", dest_folder,
     ]
 
     bittensor.logging.info(f"Running transfer command: {shlex.join(transfer_command)}")
