@@ -15,4 +15,4 @@ LOCAL_SUBTENSORS = [
     "ws://192.168.69.55:9944 (local archive)",
 ]
 
-FINNEY_INTERVAL = 1440  # In minutes (1 day)
+FINNEY_INTERVAL = 360  # In minutes (6 hours)

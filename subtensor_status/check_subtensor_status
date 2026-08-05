@@ -286,7 +286,14 @@ def main(options):
                 f"than {interval_seconds} seconds. Not waiting."
             )
 
-        minutes_until_get_finney_block -= options.interval
+        # There's probably a better way to do this but this ensures that
+        # we get the finney block every time when we're reading it from
+        # a json file.
+        if options.finney_block_folder:
+            minutes_until_get_finney_block = 0
+        else:
+            minutes_until_get_finney_block -= options.interval
+
         if finney_block is not None:
             finney_block += options.interval * 5  # 5 blocks per minute
 
