@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+
+# standard imports
+import argparse
+import json
+import os
+import subprocess
+import time
+
+
+LOCAL_TIMEZONE = "MST7MDT"
+JSON_FILE_NAME = "wc_subnets_data.json"
+TIMESTAMP_FILE_NAME = "timestamp.json"
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-j", "--json-folder",
+        help="The json folder in which to write the json files."
+    )
+
+    parser.add_argument(
+        "-i", "--interval",
+        type=float,
+        default=0,
+        help="The number of minutes between data gathering."
+    )
+
+    parser.add_argument(
+        "-p", "--subprocess",
+        action="store_true",
+        help="When specified, run everything in a subprocess."
+    )
+
+    return parser.parse_args()
+
+
+def format_time(total_time):
+    m = total_time/60
+    minutes = int(m)
+    seconds = round((m - minutes)*60)
+
+    runtime_text = [f"{minutes} minutes"] if minutes else []
+    if seconds:
+        runtime_text += [f"{seconds} seconds"]
+    runtime_text = ", ".join(runtime_text)
+
+    return runtime_text
+
+
+def write_json_file(json_folder, data):
+    os.makedirs(json_folder, exist_ok=True)
+
+    json_file = os.path.join(json_folder, JSON_FILE_NAME)
+    print(f"\nWriting data to file: {json_file}")
+    with open(json_file, "w") as fd:
+        json.dump(data, fd, indent=4)
+
+
+def write_timestamp(json_folder):
+    os.environ["TZ"] = LOCAL_TIMEZONE
+    time.tzset()
+
+    max_file_time = 0
+    json_base, json_ext = os.path.splitext(JSON_FILE_NAME)
+    for _file in os.listdir(json_folder):
+        file_base, file_ext = os.path.splitext(_file)
+        if not file_base.startswith(json_base) or file_ext != json_ext:
+            continue
+
+        json_file = os.path.join(json_folder, _file)
+        file_time = os.path.getmtime(json_file)
+        if file_time > max_file_time:
+            max_file_time = file_time
+
+    timestamp = {
+        "display_time": time.ctime(max_file_time),
+        "actual_time": int(max_file_time),
+    }
+    timestamp_file = os.path.join(json_folder, TIMESTAMP_FILE_NAME)
+    print(f"\nWriting timestamp file: {timestamp_file}")
+    with open(timestamp_file, "w") as fd:
+            json.dump(timestamp, fd)
+
+
+def run(options):
+    print("Gathering WC Subnets")
+
+    wc_subnets = set()
+    process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
+    pm2_output = json.loads(process.stdout)
+    for pm2_process in pm2_output:
+        pm2_env = pm2_process["pm2_env"]
+        if pm2_env["status"] != "online":
+            continue
+
+        script_path = pm2_env["pm_exec_path"]
+        script_name = os.path.split(script_path)[1]
+        if script_name != "wc_subnet.py":
+            continue
+
+        # This is how we know the process is a WC code process
+        if "args" in pm2_env:
+            script_args = pm2_env["args"]
+            if "--netuid" in script_args:
+                netuid_index = script_args.index("--netuid") + 1
+                netuid = int(script_args[netuid_index])
+                wc_subnets.add(netuid)
+
+    wc_subnets = sorted(wc_subnets)
+
+    print("WC Subnets:")
+    print(wc_subnets)
+
+    if options.json_folder:
+        write_json_file(options.json_folder, wc_subnets)
+        write_timestamp(options.json_folder)
+
+
+def main(options):
+    interval_seconds = round(options.interval * 60)
+
+    while True:
+        start_time = time.time()
+
+        # Run the subnet data gathering.
+        if options.subprocess:
+            args = [options]
+            with multiprocessing.Pool(processes=1) as pool:
+                pool.apply(run, args)
+        else:
+            run(options)
+
+        # Only gather the data once.
+        if not interval_seconds:
+            break
+
+        total_seconds = round(time.time() - start_time)
+        wait_seconds = interval_seconds - total_seconds
+        if wait_seconds > 0:
+            wait_time_formatted = format_time(wait_seconds)
+            print(f"Waiting {wait_time_formatted}.")
+            time.sleep(wait_seconds)
+        else:
+            print(
+                f"Processing took {total_seconds} seconds which is longer "
+                f"than {interval_seconds} seconds. Not waiting."
+            )
+
+
+
+if __name__ == "__main__":
+    options = parse_args()
+
+    if options.subprocess:
+        import multiprocessing
+
+    main(options)
