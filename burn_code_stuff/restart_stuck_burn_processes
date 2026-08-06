@@ -11,9 +11,7 @@ import time
 
 
 # Constants
-# TODO: Change this to 400 once all burn subnets are on the latest code
-# that sets weights every epoch instead of every two epochs.
-STOPPED_LOGS_THRESHOLD_BLOCKS = 400  # Two epochs plus 40 blocks padding
+STOPPED_LOGS_THRESHOLD_BLOCKS = 400  # One epoch plus 40 blocks padding
 WAIT_BLOCKS = 180  # Half an epoch
 PROCESS_LOCATION = "Super5"
 DISCORD_MONITOR_URL = (
@@ -52,11 +50,12 @@ class BurnProcessChecker:
         restart_threshold = STOPPED_LOGS_THRESHOLD_BLOCKS * 12  # In seconds
         wait_time = WAIT_BLOCKS * 12  # In seconds
         burn_process_regex = re.compile(r"^burn_sn(?P<netuid>\d+)$")
+        wc_process_regex = re.compile(r"^wc_sn(?P<netuid>\d+)$")
 
         while True:
             self._log_info("")
             self._log_info("")
-            self._log_info("Checking for stopped burn process logs.")
+            self._log_info("Checking for stopped burn and wc process logs.")
 
             process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
             pm2_output = json.loads(process.stdout)
@@ -65,7 +64,14 @@ class BurnProcessChecker:
                 try:
                     netuid = burn_process_regex.match(pm2_name).group("netuid")
                 except AttributeError:
-                    continue
+                    try:
+                        netuid = wc_process_regex.match(pm2_name).group("netuid")
+                    except AttributeError:
+                        continue
+                    else:
+                        descriptor = "WC"
+                else:
+                    descriptor = "burn"
 
                 out_log_file = pm2_process["pm2_env"]["pm_out_log_path"]
                 error_log_file = pm2_process["pm2_env"]["pm_err_log_path"]
@@ -94,7 +100,7 @@ class BurnProcessChecker:
                     log_blocks = time_diff // 12
                     msg = f"No log output in {log_blocks} blocks."
                     self._log_error(msg)
-                    self._do_restart(pm2_name, netuid, msg)
+                    self._do_restart(pm2_name, netuid, descriptor, msg)
                 else:
                     self._log_info(f"Time difference {time_diff} seconds "
                                 f"< {restart_threshold} seconds")
@@ -103,21 +109,21 @@ class BurnProcessChecker:
             self._log_info(f"Sleeping for {wait_time} seconds.")
             time.sleep(wait_time)
 
-    def _do_restart(self, pm2_name, netuid, msg):
+    def _do_restart(self, pm2_name, netuid, descriptor, msg):
         self._log_info(f"Restarting {pm2_name} pm2 process.")
         try:
             subprocess.run(["pm2", "restart", pm2_name], check=True)
         except subprocess.CalledProcessError as exc:
             self._log_error(f"Restart failed with error: {exc}")
             self._send_monitor_notification(
-                f"Failed to restart burn code for subnet {netuid} on "
+                f"Failed to restart {descriptor} code for subnet {netuid} on "
                 f"{PROCESS_LOCATION} - {msg}"
             )
             return False
 
         self._log_info("Successfully restarted.")
         self._send_monitor_notification(
-            f"Successfully restarted burn code for subnet {netuid} on "
+            f"Successfully restarted {descriptor} code for subnet {netuid} on "
             f"{PROCESS_LOCATION} - {msg}"
         )
         return True
