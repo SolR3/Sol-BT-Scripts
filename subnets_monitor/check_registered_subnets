@@ -92,18 +92,19 @@ class SubnetsChecker:
 
         print(f"Connecting to subtensor: {self._network}")
         try:
-            async with bittensor.AsyncSubtensor(network=self._network) as subtensor:
-                try:
-                    netuids = await subtensor.get_all_subnets_netuid()
-                except AttributeError:
-                    netuids = await subtensor.get_subnets()
-                netuids = netuids[1:]
+            async with bittensor.Subtensor(network=self._network) as subtensor:
+                # Ensure that all queries below are on the same block in case
+                # any queries take longer than a block.
+                block = await subtensor.block()
+                subtensor_at_block = await subtensor.at(block)
+
+                subnets = await subtensor_at_block.subnets.all()
+                netuids = [sn.netuid for sn in subnets][1:]
                 print(f"Checking subnets:\n{netuids}")
 
-                block = await subtensor.block
-                metagraphs = await asyncio.gather(
+                hyperparams = await asyncio.gather(
                     *[
-                        subtensor.metagraph(netuid=netuid, block=block)
+                        subtensor_at_block.subnets.subnet_hyperparameters(netuid=netuid)
                         for netuid in netuids
                     ]
                 )
@@ -118,7 +119,7 @@ class SubnetsChecker:
         print(f"\nGathered subnet data in {t2:.3} seconds")
 
         registered_subnet_list = [
-            str(m.netuid) for m in metagraphs if m.hparams.registration_allowed
+            str(netuids[ni]) for ni, hp in enumerate(hyperparams) if hp["registration_allowed"]
         ]
         return registered_subnet_list
 
@@ -249,8 +250,7 @@ def main(options):
 
     while True:
         start_time = time.time()
-        local_subtensor_index = \
-            (local_subtensor_index + 1) % len(LOCAL_SUBTENSORS)
+        local_subtensor_index = (local_subtensor_index + 1) % len(LOCAL_SUBTENSORS)
         options.network = get_subtensor_network(
             options.local_subtensor, local_subtensor_index
         )
