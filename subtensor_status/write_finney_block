@@ -17,6 +17,7 @@ from subtensor_constants import FINNEY_BLOCK_FILE_NAME
 from subtensor_utils import (
     FinneyBlockData,
     format_time,
+    logger,
 )
 
 
@@ -52,11 +53,11 @@ def write_finney_block_file(finney_block_data, json_folder):
 
     # First remove existing file
     if os.path.isfile(json_file):
-        bittensor.logging.info(f"Removing {json_file}")
+        logger.info("Removing: %s", json_file)
         os.unlink(json_file)
 
     # Then write the new  file
-    bittensor.logging.info(f"\nWriting data to file: {json_file}")
+    logger.info("\nWriting data to file: %s", json_file)
     with open(json_file, "w") as fd:
         json.dump(asdict(finney_block_data), fd, indent=4)
 
@@ -77,18 +78,17 @@ def transfer_to_jerky(source_file, dest_folder):
         "--dest", dest_folder,
     ]
 
-    bittensor.logging.info(f"Running transfer command: {shlex.join(transfer_command)}")
+    logger.info("Running transfer command: %s", shlex.join(transfer_command))
     try:
         subprocess.run(transfer_command, check=True)
     except subprocess.CalledProcessError as exc:
-        bittensor.logging.error(f"Command failed with error: {exc}")
+        logger.error("Command failed with error: %s", exc)
     else:
-        bittensor.logging.info("Command succeeded.")
+        logger.info("Command succeeded.")
 
 
 def main(options):
-    bittensor.logging.enable_info()
-    bittensor.logging.info("Getting finney block.")
+    logger.info("Getting finney block.")
 
     start_time = time.time()
 
@@ -98,8 +98,8 @@ def main(options):
         finney_block = int(result)
     except ValueError:
         finney_block = None
-        bittensor.logging.error("Failed to get finney block.")
-        bittensor.logging.error(result)
+        logger.error("Failed to get finney block.")
+        logger.error(result)
 
     finney_block_data = FinneyBlockData(
         block=finney_block,
@@ -108,7 +108,7 @@ def main(options):
 
     total_seconds = round(time.time() - start_time)
     total_time_formatted = format_time(total_seconds)
-    bittensor.logging.info(f"Finney block gathering took {total_time_formatted}.\n")
+    logger.info("Finney block gathering took %s.\n", total_time_formatted)
 
     json_file = write_finney_block_file(finney_block_data, options.json_folder)
     if options.transfer_to_jerky:
