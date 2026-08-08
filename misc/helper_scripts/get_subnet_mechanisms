@@ -4,6 +4,9 @@
 import argparse
 import asyncio
 
+# bittensor import
+import bittensor
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -30,8 +33,8 @@ def get_network(name):
     return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
 
 
-async def main(args):
-    import bittensor
+async def main():
+    args = parse_args()
 
     network = get_network(args.local_subtensor)
     print(f"Connecting to {network}")
@@ -40,16 +43,16 @@ async def main(args):
     print("Subnets with multiple mechanisms")
     print("=================================")
 
-    async with bittensor.AsyncSubtensor(network=network) as subtensor:
+    async with bittensor.Subtensor(network=network) as subtensor:
         if args.netuids:
             netuids = args.netuids
         else:
-            netuids = await subtensor.get_all_subnets_netuid()
-            netuids = netuids[1:]
+            subnets = await subtensor.subnets.all()
+            netuids = [sn.netuid for sn in subnets][1:]
 
         mechs_list = await asyncio.gather(
             *[
-                subtensor.get_mechanism_count(netuid)
+                subtensor.subnets.mechanism_count(netuid)
                 for netuid in netuids
             ]
         )
@@ -58,14 +61,15 @@ async def main(args):
         # number of subnets using multiple mechanisms gets large.
         # emission_list = await asyncio.gather(
         #     *[
-        #         subtensor.get_mechanism_emission_split(netuid)
+        #         subtensor.subnets.mechanism_emission_split(netuid)
         #         for netuid in netuids
         #     ]
         # )
 
         for netuid, mechs in zip(netuids, mechs_list):
-            if mechs != 1:
-                emission = await subtensor.get_mechanism_emission_split(netuid)
+            if mechs > 1:
+                emission = await subtensor.subnets.mechanism_emission_split(netuid)
+                emission = [round((e / bittensor.settings.U16_MAX) * 100) for e in emission]
                 emission = ", ".join([f"{e}%" for e in emission])
                 netuid = f"{netuid}:"
                 print(f"{netuid:<4} {mechs} ({emission})")
@@ -75,8 +79,7 @@ async def main(args):
 
 if __name__ == "__main__":
     try:
-        args = parse_args()
-        asyncio.run(main(args))
+        asyncio.run(main())
     except KeyboardInterrupt as exc:
         import traceback
         exc_list = traceback.format_exception_only(exc)
