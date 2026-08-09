@@ -198,14 +198,8 @@ class GetValidatorWeights:
                 print("")
 
     def _get_owner(self):
-        owner_hotkey = self._subtensor.query(
-            bittensor.storage.SubtensorModule.SubnetOwnerHotkey,
-            params=[self._netuid],
-        )
-        owner_coldkey = self._subtensor.query(
-            bittensor.storage.SubtensorModule.SubnetOwner,
-            params=[self._netuid],
-        )
+        owner_hotkey = self._metagraph.owner_hotkey
+        owner_coldkey = self._metagraph.owner_coldkey
 
         if owner_hotkey in self._metagraph.hotkeys:
             owner_uid = self._metagraph.hotkeys.index(owner_hotkey)
