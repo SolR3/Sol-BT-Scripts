@@ -5,6 +5,8 @@ from rich.text import Text
 from rich.console import Console
 import sys
 
+import bittensor
+
 
 LEGIT_VALI_COLDKEYS = {
     "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo": "Rizzo",
@@ -92,189 +94,228 @@ def get_network(name):
     return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
 
 
-def print_weights(owner_uid, owner_hotkey, owner_coldkeys, threshold, metagraph,
-                  metagraph_info, mechid, target_uids, print_coldkeys, verbose):
-    text = Text()
-    if print_coldkeys:
-        owner_keys = f"({', '.join(owner_coldkeys)})" if len(owner_coldkeys) > 1 else owner_coldkeys[0]
-    else:
-        owner_keys = owner_hotkey
-    text.append(f"\nOwner:\n==========\n{owner_uid} - {owner_keys}\n\n\n")
-    text.append("Weights:\n==========\n")
-    for uid in metagraph.uids[metagraph.validator_permit]:
-        name = None
-        coldkey = metagraph.coldkeys[uid]
-        if coldkey in owner_coldkeys:
-            name = "Owner"
-            color = 14
-        elif coldkey in LEGIT_VALI_COLDKEYS:
-            name = LEGIT_VALI_COLDKEYS[coldkey]
-            color = 10 if name == "Rizzo" else 12
-        elif coldkey in WEIGHT_COPIER_COLDKEYS:
-            name = WEIGHT_COPIER_COLDKEYS[coldkey]
-            color = 9
+class GetValidatorWeights:
+    def __init__(self, args):
+        self._netuid = args.netuid
+        self._mechid = args.mechid
+        self._diff = args.diff
+        self._target_uids = args.target_uids
+        self._threshold = args.threshold
+        self._verbose = args.verbose
+        self._print_coldkeys = args.print_coldkeys
+        self._local_subtensor = args.local_subtensor
 
-        vtrust = metagraph.Tv[uid]
-        updated = metagraph_info.block - metagraph_info.last_update[uid]
+        self._run()
 
-        # metagraph_info.mechid is always 0 for some reason.
-        if mechid == 0:
-            weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if w > threshold]
-            if target_uids:
-                weights = [w for w in weights if w[0] in target_uids]
-            num_weights = len(weights)
-        else:
-            weights = "???"
-            num_weights = "???"
+    def _run(self):
+        network = get_network(self._local_subtensor)
+        print(f"Connecting to {network}")
+    
+        with bittensor.Subtensor(network=network) as subtensor:
+            self._subtensor = subtensor.at(subtensor.block)
 
-        if name:
-            text.append(f"{name}:\n", style=f"color({color})")
-        key = metagraph.coldkeys[uid] if print_coldkeys else metagraph.hotkeys[uid]
-        text.append(f"{uid} - {key} (Weights: {num_weights}  vT: {vtrust:.3f}  U: {updated})\n")
-        if verbose:
-            text.append(str(weights) + "\n")
-        text.append("\n")
+            self._block = self._subtensor.block
+            self._metagraph = self._subtensor.subnets.metagraph(self._netuid)
+            self._weights = self._subtensor.weights.weights(netuid=self._netuid, mechid=self._mechid)
+            self._vtrusts = self._subtensor.query(
+                bittensor.storage.SubtensorModule.ValidatorTrust,
+                params=[self._netuid]
+            )
+            last_update_index = self._mechid * bittensor.settings.GLOBAL_MAX_SUBNET_COUNT + self._netuid
+            self._last_updates = self._subtensor.query(
+                bittensor.storage.SubtensorModule.LastUpdate,
+                params=[last_update_index]
+            )
 
-    Console().print(text)
-
-
-def print_weight_diffs(uid_a, uid_b, threshold, metagraph, target_uids, verbose):
-    vtrust_a = metagraph.Tv[uid_a]
-    vtrust_b = metagraph.Tv[uid_b]
-    updated_a = metagraph.block - metagraph.last_update[uid_a]
-    updated_b = metagraph.block - metagraph.last_update[uid_b]
-
-    print("Hotkeys:\n=========")
-    print(f"{uid_a:<3} - {metagraph.hotkeys[uid_a]} (vT: {vtrust_a:.3f}  U: {updated_a})")
-    print(f"{uid_b:<3} - {metagraph.hotkeys[uid_b]} (vT: {vtrust_b:.3f}  U: {updated_b})")
-    print("")
-
-    weight_diffs = metagraph.weights[uid_a] - metagraph.weights[uid_b]
-    weight_diffs = [(i, float(w)) for i, w in enumerate(weight_diffs) if abs(w) > threshold]
-    if target_uids:
-        weight_diffs = [w for w in weight_diffs if w[0] in target_uids]
-
-    print("Weight Diffs:\n==============")
-    print(f"{len(weight_diffs)} differences\n")
-    if verbose:
-        for uid, weight_diff in weight_diffs:
-            weight_a = metagraph.weights[uid_a][uid]
-            weight_b = metagraph.weights[uid_b][uid]
-            print(f"{uid}:")
-            print(f"{weight_diff}  ({weight_a} - {weight_b})")
-            print("")
-
-
-def get_uid_from_vali_name(metagraph, vali_name):
-    for coldkey, name in LEGIT_VALI_COLDKEYS.items():
-        if name.lower() == vali_name.lower():
-            if coldkey in metagraph.coldkeys:
-                return metagraph.coldkeys.index(coldkey)
+            if self._diff:
+                self._print_weight_diffs()
             else:
-                return
+                self._print_weights()
 
+    def _print_weights(self):
+        owner_uid, owner_hotkey, owner_coldkeys = self._get_owner()
 
-def get_diff_uids(diff_a, diff_b, metagraph):
-    try:
-        uid_a = int(diff_a)
-    except ValueError:
-        try:
-            uid_a = metagraph.hotkeys.index(diff_a)
-        except ValueError:
-            uid_a = get_uid_from_vali_name(metagraph, diff_a)
+        text = Text()
+        if self._print_coldkeys:
+            owner_keys = f"({', '.join(owner_coldkeys)})" if len(owner_coldkeys) > 1 else owner_coldkeys[0]
+        else:
+            owner_keys = owner_hotkey
+        text.append(f"\nOwner:\n==========\n{owner_uid} - {owner_keys}\n\n\n")
+        text.append("Weights:\n==========\n")
 
-    if uid_a is None:
-        Console().print(Text(
-            f"ERROR: Could not find uid for {diff_a}.",
-            style="color(9)"))
-        sys.exit(1)
+        for validator in self._metagraph.validators:
+            uid = validator.uid
+            coldkey = validator.coldkey
+            hotkey = validator.hotkey
 
-    try:
-        uid_b = int(diff_b)
-    except ValueError:
-        try:
-            uid_b = metagraph.hotkeys.index(diff_b)
-        except ValueError:
-            uid_b = get_uid_from_vali_name(metagraph, diff_b)
+            name = None
+            if coldkey in owner_coldkeys:
+                name = "Owner"
+                color = 14
+            elif coldkey in LEGIT_VALI_COLDKEYS:
+                name = LEGIT_VALI_COLDKEYS[coldkey]
+                color = 10 if name == "Rizzo" else 12
+            elif coldkey in WEIGHT_COPIER_COLDKEYS:
+                name = WEIGHT_COPIER_COLDKEYS[coldkey]
+                color = 9
 
-    if uid_b is None:
-        Console().print(Text(
-            f"ERROR: Could not find uid for {diff_b}.",
-            style="color(9)"))
-        sys.exit(1)
+            vtrust =  self._get_vtrust(uid)
+            updated = self._get_updated(uid)
+            weights = self._get_weights(uid)
+            num_weights = len(weights)
 
-    return uid_a, uid_b
+            if name:
+                text.append(f"{name}:\n", style=f"color({color})")
+            key = coldkey if self._print_coldkeys else hotkey
+            text.append(f"{uid} - {key} (Weights: {num_weights}  vT: {vtrust:.3f}  U: {updated})\n")
+            if self._verbose:
+                text.append(str(weights) + "\n")
+            text.append("\n")
 
+        Console().print(text)
 
-def get_owner(subnet, metagraph):
-    owner_hotkey = subnet.owner_hotkey
-    owner_coldkey = subnet.owner_coldkey
+    def _print_weight_diffs(self):
+        uid_a, uid_b = self._get_diff_uids()
 
-    if owner_hotkey in metagraph.hotkeys:
-        owner_uid = metagraph.hotkeys.index(owner_hotkey)
-        owner_coldkeys = set([owner_coldkey, metagraph.coldkeys[owner_uid]])
+        vtrust_a = self._get_vtrust(uid_a)
+        vtrust_b = self._get_vtrust(uid_b)
+        updated_a = self._get_updated(uid_a)
+        updated_b = self._get_updated(uid_b)
 
-    elif owner_coldkey in metagraph.coldkeys:
-        # Should only happen for subnet 104
-        Console().print(Text(
-            f"WARNING: Owner hotkey {owner_hotkey} is not in the metagraph.",
-            style="color(11)"))
-        owner_uid = metagraph.coldkeys.index(owner_coldkey)
-        owner_hotkey = metagraph.hotkeys[owner_uid]
-        owner_coldkeys = set([owner_coldkey])
+        print("Hotkeys:\n=========")
+        print(f"{uid_a:<3} - {self._metagraph.hotkeys[uid_a]} (vT: {vtrust_a:.3f}  U: {updated_a})")
+        print(f"{uid_b:<3} - {self._metagraph.hotkeys[uid_b]} (vT: {vtrust_b:.3f}  U: {updated_b})")
+        print("")
 
-    else:
-        # Should never happen
-        Console().print(Text(
-            f"ERROR: Owner hotkey {owner_hotkey} and owner coldkey {owner_coldkey} are not in the metagraph.",
-            style="color(9)"))
-        owner_uid = None
-        owner_hotkey = None
-        owner_coldkeys = set()
+        weight_diffs = self._get_weight_diffs(uid_a, uid_b)
 
-    owner_coldkeys = list(owner_coldkeys)
+        print("Weight Diffs:\n==============")
+        print(f"{len(weight_diffs)} differences\n")
+        if self._verbose:
+            for uid, weight_diff, weight_a, weight_b in weight_diffs:
+                print(f"{uid}:")
+                print(f"{weight_diff}  ({weight_a} - {weight_b})")
+                print("")
 
-    return owner_uid, owner_hotkey, owner_coldkeys
+    def _get_owner(self):
+        owner_hotkey = self._subtensor.query(
+            bittensor.storage.SubtensorModule.SubnetOwnerHotkey,
+            params=[self._netuid],
+        )
+        owner_coldkey = self._subtensor.query(
+            bittensor.storage.SubtensorModule.SubnetOwner,
+            params=[self._netuid],
+        )
 
+        if owner_hotkey in self._metagraph.hotkeys:
+            owner_uid = self._metagraph.hotkeys.index(owner_hotkey)
+            owner_coldkeys = set([owner_coldkey, self._metagraph.coldkeys[owner_uid]])
 
-def main(args):
-    import bittensor
-
-    if args.diff:
-        if args.mechid != 0:
+        elif owner_coldkey in self._metagraph.coldkeys:
+            # Should only happen for subnet 104
             Console().print(Text(
-                "ERROR: Weight diffs have not been implemented for mechids other than 0.",
-                style="color(9)"))
-            return
-        if args.print_coldkeys:
+                f"WARNING: Owner hotkey {owner_hotkey} is not in the metagraph.",
+                style="color(11)"))
+            owner_uid = self._metagraph.coldkeys.index(owner_coldkey)
+            owner_hotkey = self._metagraph.hotkeys[owner_uid]
+            owner_coldkeys = set([owner_coldkey])
+
+        else:
+            # Should never happen
             Console().print(Text(
-                "ERROR: The --print-coldkeys arg does not apply when printing the weight diffs.",
-                style="color(9)"))
-            return
+                f"ERROR: Owner hotkey {owner_hotkey} and owner coldkey {owner_coldkey} "
+                "are not in the metagraph.", style="color(9)"))
+            owner_uid = None
+            owner_hotkey = None
+            owner_coldkeys = set()
 
-    network = get_network(args.local_subtensor)
-    print(f"Connecting to {network}")
+        owner_coldkeys = list(owner_coldkeys)
 
-    with bittensor.Subtensor(network=network) as subtensor:
-        subnet = subtensor.subnet(args.netuid)
-        metagraph = subtensor.metagraph(args.netuid, lite=False)
-        metagraph_info = subtensor.get_metagraph_info(args.netuid, mechid=args.mechid)
+        return owner_uid, owner_hotkey, owner_coldkeys
 
-    if args.diff:
-        uids = get_diff_uids(*args.diff, metagraph)
-        print_weight_diffs(*uids, args.threshold, metagraph, args.target_uids, args.verbose)
+    def _get_diff_uids(self):
+        uids = []
 
-    else:
-        owner_uid, owner_hotkey, owner_coldkeys = get_owner(subnet, metagraph)
-        print_weights(owner_uid, owner_hotkey, owner_coldkeys, args.threshold,
-                      metagraph, metagraph_info, args.mechid, args.target_uids,
-                      args.print_coldkeys, args.verbose)
+        for diff_val in self._diff:
+            try:
+                uid = int(diff_val)
+            except ValueError:
+                try:
+                    uid = self._metagraph.hotkeys.index(diff_val)
+                except ValueError:
+                    uid = self._get_uid_from_vali_name(diff_val)
+
+            if uid is None:
+                Console().print(Text(
+                    f"ERROR: Could not find uid for {diff_val}.",
+                    style="color(9)"))
+                sys.exit(1)
+
+            uids.append(uid)
+
+        return uids
+
+    def _get_uid_from_vali_name(self, vali_name):
+        for coldkey, name in LEGIT_VALI_COLDKEYS.items():
+            if name.lower() == vali_name.lower():
+                if coldkey in self._metagraph.coldkeys:
+                    return self._metagraph.coldkeys.index(coldkey)
+                return None
+
+    def _get_vtrust(self, uid):
+        return self._vtrusts[uid] / bittensor.settings.U16_MAX
+
+    def _get_updated(self, uid):
+        return self._block - self._last_updates[uid]
+
+    def _get_weights(self, uid):
+        def filter_weight(i, w):
+            if not w or w < self._threshold:
+                return False
+            if self._target_uids and i not in self._target_uids:
+                return False
+            return True
+
+        weights= [(i, w) for i, w in self._weights.get(uid, {}).items() if filter_weight(i, w)]
+        weights.sort(key=lambda w: w[0])
+
+        return weights
+
+    def _get_weight_diffs(self, uid_a, uid_b):
+        weight_diffs = []
+
+        for uid in sorted(set(self._weights.get(uid_a, {})) | set(self._weights.get(uid_b, {}))):
+            if self._target_uids and uid not in self._target_uids:
+                continue
+
+            weight_a = self._get_weight(uid_a, uid)
+            weight_b = self._get_weight(uid_b, uid)
+            diff = weight_a - weight_b
+            if not diff or abs(diff) < self._threshold:
+                continue
+
+            weight_diffs.append((uid, diff, weight_a, weight_b))
+
+        return weight_diffs
+
+    def _get_weight(self, source_uid, target_uid):
+        return self._weights[source_uid].get(target_uid, 0.0)
+
+def main():
+    args = parse_args()
+
+    if args.diff and args.print_coldkeys:
+        Console().print(Text(
+            "ERROR: The --print-coldkeys arg does not apply when printing the weight diffs.",
+            style="color(9)"))
+        return
+
+    GetValidatorWeights(args)
 
 
 if __name__ == "__main__":
     try:
-        args = parse_args()
-        main(args)
+        main()
     except KeyboardInterrupt as exc:
         import traceback
         exc_list = traceback.format_exception_only(exc)
