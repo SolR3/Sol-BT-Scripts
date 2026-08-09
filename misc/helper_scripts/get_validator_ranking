@@ -11,6 +11,9 @@ from dataclasses import dataclass, field
 from rich.text import Text
 from rich.console import Console
 
+# Bittensor import
+import bittensor
+
 
 LEGIT_VALI_COLDKEYS = {
     "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo": "Rizzo",
@@ -79,40 +82,34 @@ def get_network(name):
 
 
 async def get_metagraphs():
-    import bittensor
-
     network = get_network(args.local_subtensor)
     print(f"Connecting to {network}")
 
-    async with bittensor.AsyncSubtensor(network=network) as subtensor:
-        # Get all subnets
-        netuids = await subtensor.get_all_subnets_netuid()
-        netuids = netuids[1:]
+    async with bittensor.Subtensor(network=network) as subtensor:
+        # Get a snapshot of the subtensor at the current block so everything is in sync
+        # in case data gathering take multiple blocks.
+        block = await subtensor.block()
+        subtensor_snapshot = await subtensor.at(block)
 
-        # Get the block to pass to async calls so everything is in sync
-        block = await subtensor.block
+        # Get all subnets
+        subnets = await subtensor_snapshot.subnets.all()
+        netuids = [sn.netuid for sn in subnets][1:]
 
         # Get the metagraph for each netuid
         metagraphs = await asyncio.gather(
-            *[
-                subtensor.metagraph(netuid=netuid, block=block)
-                for netuid in netuids
-            ]
+            *[subtensor_snapshot.subnets.metagraph(netuid) for netuid in netuids]
         )
 
     return metagraphs
 
 
 def update_validators_stake(validators_stake, metagraph):
-    # See reference docs above for how alpha price (in tao) is calculated.
-    # metagraph.pool.moving_price - This isn't quite 100% accurate, it seems.
-    # Using the below calculation instead.
-    alpha_price = metagraph.pool.tao_in / metagraph.pool.alpha_in
-    for uid in metagraph.uids[metagraph.validator_permit]:
-        stake_in_alpha = float(metagraph.total_stake[uid])
+    alpha_price = metagraph.price
+    for validator in metagraph.validators:
+        stake_in_alpha = validator.total_stake.amount
         stake_in_tao = stake_in_alpha * alpha_price
 
-        stake_data = validators_stake.setdefault(metagraph.coldkeys[uid], StakeData())
+        stake_data = validators_stake.setdefault(validator.coldkey, StakeData())
         stake_data.stake_in_alpha[metagraph.netuid] = \
             StakeData.AlphaTuple(stake=stake_in_alpha, price=alpha_price)
         stake_data.stake_in_tao += stake_in_tao
