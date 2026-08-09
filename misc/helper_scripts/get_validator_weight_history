@@ -3,6 +3,8 @@
 import argparse
 import asyncio
 
+import bittensor
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -11,6 +13,12 @@ def parse_args():
         "netuid",
         type=int,
         help="The uid of the subnet.")
+
+    parser.add_argument(
+        "--mechid",
+        type=int,
+        default=0,
+        help="The mechanism to check. Defaults to mechid 0.")
 
     parser.add_argument(
         "-u", "--uids",
@@ -90,8 +98,21 @@ def get_network(name):
     return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
 
 
-async def main(args):
-    import bittensor
+async def _get_chain_data_at_block(subtensor, netuid, mechid, block):
+    snapshot = await subtensor.at(block)
+    weights = await snapshot.weights.weights(netuid=netuid, mechid=mechid)
+    vtrusts = await snapshot.query(
+        bittensor.storage.SubtensorModule.ValidatorTrust, params=[netuid]
+    )
+    last_update_index = mechid * bittensor.settings.GLOBAL_MAX_SUBNET_COUNT + netuid
+    last_updates = await snapshot.query(
+        bittensor.storage.SubtensorModule.LastUpdate, params=[last_update_index]
+    )
+    return (weights, vtrusts, last_updates)
+
+
+async def main():
+    args = parse_args()
 
     network = get_network(args.local_subtensor)
     print(f"Connecting to {network}")
@@ -101,37 +122,45 @@ async def main(args):
     block_diffs = [block_interval * n for n in range(num_weight_samples)]
     print(f"\nBlock interval: {block_interval} ({args.interval} hours)\n")
 
-    async with bittensor.AsyncSubtensor(network=network) as subtensor:
-        current_block = await subtensor.block
-        metagraphs = await asyncio.gather(
+    async with bittensor.Subtensor(network=network) as subtensor:
+        current_block = await subtensor.block()
+
+        chain_data = await asyncio.gather(
             *[
-                subtensor.metagraph(args.netuid, block=(current_block - block_diff), lite=False)
-                for block_diff in block_diffs
+                _get_chain_data_at_block(
+                    subtensor, args.netuid, args.mechid, (current_block - block_diff)
+                ) for block_diff in block_diffs
             ]
         )
 
+    def filter_weight(i, w):
+        if not w or w < args.threshold:
+            return False
+        if args.target_uids and i not in args.target_uids:
+            return False
+        return True
+
     for sample_num in range(num_weight_samples):
-        metagraph = metagraphs[sample_num]
+        (all_weights, vtrusts, last_updates) = chain_data[sample_num]
         block_diff = block_diffs[sample_num]
+        block = current_block - block_diff
         time_diff = get_formatted_time(block_diff * 12)  # 12 seconds per block.
 
         print(f"Time: {time_diff}")
         for uid in args.uids:
-            vtrust = metagraph.Tv[uid]
-            updated = metagraph.block - metagraph.last_update[uid]
+            vtrust = vtrusts[uid] / bittensor.settings.U16_MAX
+            updated = block - last_updates[uid]
             print(f"uid {uid} (vT: {vtrust:.3f}  U: {updated})")
             if args.verbose:
-                weights = [(i, float(w)) for i, w in enumerate(metagraph.weights[uid]) if float(w) > args.threshold]
-                if args.target_uids:
-                    weights = [w for w in weights if w[0] in args.target_uids]
+                weights = [(i, w) for i, w in all_weights.get(uid, {}).items() if filter_weight(i, w)]
+                weights.sort(key=lambda w: w[0])
                 print(f"{weights}\n")
         print("\n")
 
 
 if __name__ == "__main__":
     try:
-        args = parse_args()
-        asyncio.run(main(args))
+        asyncio.run(main())
     except KeyboardInterrupt as exc:
         import traceback
         exc_list = traceback.format_exception_only(exc)

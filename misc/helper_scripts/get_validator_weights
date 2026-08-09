@@ -45,9 +45,7 @@ def parse_args():
         "--mechid",
         type=int,
         default=0,
-        help="The mechanism to check. Defaults to mechid 0. NOTE: Calculation of weight values "
-             "has not yet been implemented for mechids other than 0. For now, when another mechid "
-             "is specified, only the vTrust and updated values will be displayed.")
+        help="The mechanism to check. Defaults to mechid 0.")
 
     parser.add_argument(
         "--target-uids",
@@ -270,7 +268,7 @@ class GetValidatorWeights:
                 return False
             return True
 
-        weights= [(i, w) for i, w in self._weights.get(uid, {}).items() if filter_weight(i, w)]
+        weights = [(i, w) for i, w in self._weights.get(uid, {}).items() if filter_weight(i, w)]
         weights.sort(key=lambda w: w[0])
 
         return weights
