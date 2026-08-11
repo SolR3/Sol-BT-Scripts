@@ -3,17 +3,9 @@
 # Standard imports
 import argparse
 import asyncio
-import os
-import sys
 
 # Bittensor import
 import bittensor
-
-# Add local helper_scripts dir to path for importing helper_scripts_common.py
-sys.path = [os.path.dirname(__file__)] + sys.path
-
-# Local imports
-from helper_scripts_common import get_lite_subtensor_network
 
 
 def parse_args():
@@ -71,8 +63,6 @@ def parse_args():
 
     parser.add_argument(
         "-l", "--local-subtensor",
-        nargs="?",
-        default=False,
         help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
              "When not specified, use the 'finney' network subtensor."
     )
@@ -104,6 +94,12 @@ def get_formatted_time(total_time):
     return formatted_time
 
 
+def get_network(name):
+    if not name:
+        return "archive"
+    return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
+
+
 async def _get_chain_data_at_block(subtensor, netuid, mechid, block):
     snapshot = await subtensor.at(block)
     weights = await snapshot.weights.weights(netuid=netuid, mechid=mechid)
@@ -120,7 +116,7 @@ async def _get_chain_data_at_block(subtensor, netuid, mechid, block):
 async def main():
     args = parse_args()
 
-    network = get_lite_subtensor_network(args.local_subtensor)
+    network = get_network(args.local_subtensor)
     print(f"Connecting to {network}")
 
     block_interval = int(round(args.interval * 300))  # Interval is in hours. 300 blocks per hour.
