@@ -1,36 +1,24 @@
 #!/usr/bin/env python3
 
+# Standard imports
 import argparse
+import os
 from rich.text import Text
 from rich.console import Console
 import sys
 
+# Bittensor import
 import bittensor
 
+# Add local helper_scripts dir to path for importing helper_scripts_common.py
+sys.path = [os.path.dirname(__file__)] + sys.path
 
-LEGIT_VALI_COLDKEYS = {
-    "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo": "Rizzo",
-    "5GW9X8GyXwA3VQbNhnzb6sJmfPvKBBJwx19hJrCseverjovV": "Rt21",
-    "5EBuUXD6eXSSWVaT1NqaUQoAACUkAmEogzAfPQvDXTEQZ8Ff": "OTF",
-    "5E9fVY1jexCNVMjd2rdBsAxeamFGEMfzHcyTn2fHgdHeYc5p": "Yuma",
-    "5FHxxe8ZKYaNmGcSLdG5ekxXeZDhQnk9cbpHdsJW8RunGpSs": "Kraken",
-    "5CWzmvA17MAMQ9mnAecLxFXS2N8846rz6T7m4QNHyVtJVq4j": "TAO.com",
-}
-
-WEIGHT_COPIER_COLDKEYS = {
-    "5EJAqczgzCMvWcmXhKMZH4vMS5gPy8BjeuHjz5o5yN6RYzX2": "Tao5 (WC)",
-    "5GsbTgfvgCH4xdqSkiPb7EaBBFLHjWH5vfEALhJaewSFpZX9": "Tao.bot (WC)",
-    "5Ek8i6wDRakJfJPM9wpJLYDE9G9uaqHLdARoewtTiLtbt33f": "1T1B.AI (WC)",
-    "5GP1VN5DcMNW5XL6cAFEzneN9fTfWMytNibZX8YMS7BgJBG6": "Kooltek68 (WC)",
-    "5Eq8b9p6zJMjEXyH9sX4DRMYspnUyorEKq3Zmha1WN6AC4sf": "Crucible Labs (WC)",
-    "5HiFDVNX4ivCJFt9RvgRCtQKmAPgAXGX8BRgX3XKqfY9fFve": "TAO.app (WC)",
-    "5DkwfxC9mZTTCsRUt6nrnwQEWVrhsmY13SBRparj6cpAVxVY": "Datura",
-    "5F4XcaiEBkE3ARx2kG29KJ8e94nFfUZQYC4c7zfticastxiD": "Weight Copier",
-    "5DyMLUKuc6T3QFAXKd3w6dTcxmcH1WBZ1gDrRwJAnPf7N28w": "Weight Copier",
-    "5EnXts8HKLv1o3qhFBGPaoZt1CjMd2g4RtKDpnp3A44xFCGK": "Weight Copier",  # 5FLoWC...SeRv8m
-    "5CqsgERpW6dJn4AtTkfckcUd7Ab6JNVa2Hb2MhyjApYVXMUV": "MUV",
-    "5DywxdtESjskgPZrDXL86qV44SpPgJuqs9X6noyJJwX9PaSD": "General Tensor",
-}
+# Local imports
+from helper_scripts_common import (
+    get_lite_subtensor_network,
+    LEGIT_VALI_COLDKEYS,
+    WEIGHT_COPIER_COLDKEYS,
+)
 
 
 def parse_args():
@@ -79,17 +67,13 @@ def parse_args():
 
     parser.add_argument(
         "-l", "--local-subtensor",
+        nargs="?",
+        default=False,
         help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
              "When not specified, use the 'finney' network subtensor."
     )
 
     return parser.parse_args()
-
-
-def get_network(name):
-    if not name:
-        return "finney"
-    return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
 
 
 class GetValidatorWeights:
@@ -106,7 +90,7 @@ class GetValidatorWeights:
         self._run()
 
     def _run(self):
-        network = get_network(self._local_subtensor)
+        network = get_lite_subtensor_network(self._local_subtensor)
         print(f"Connecting to {network}")
     
         with bittensor.Subtensor(network=network) as subtensor:
