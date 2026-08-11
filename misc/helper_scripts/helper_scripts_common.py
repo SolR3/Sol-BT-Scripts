@@ -62,3 +62,27 @@ def _create_get_lite_subtensor_network():
 
 
 get_lite_subtensor_network = _create_get_lite_subtensor_network()
+
+
+def get_formatted_time(total_time):
+    # Get hours
+    h = total_time/3600
+    hours = int(h)
+
+    # Get minutes
+    remainder = round((h - hours)*3600)
+    m = remainder/60
+    minutes = int(m)
+
+    # Get seconds
+    seconds = round((m - minutes)*60)
+
+    # Get formatted time
+    formatted_time = [f"{hours} hours"] if hours else []
+    if minutes:
+        formatted_time.append(f"{minutes} minutes")
+    if seconds or not formatted_time:
+        formatted_time.append(f"{seconds} seconds")
+    formatted_time = ", ".join(formatted_time)
+
+    return formatted_time

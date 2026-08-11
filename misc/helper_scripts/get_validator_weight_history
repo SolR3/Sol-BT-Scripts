@@ -3,9 +3,17 @@
 # Standard imports
 import argparse
 import asyncio
+import os
+import sys
 
 # Bittensor import
 import bittensor
+
+# Add local helper_scripts dir to path for importing helper_scripts_common.py
+sys.path = [os.path.dirname(__file__)] + sys.path
+
+# Local imports
+from helper_scripts_common import get_formatted_time
 
 
 def parse_args():
@@ -68,30 +76,6 @@ def parse_args():
     )
 
     return parser.parse_args()
-
-
-def get_formatted_time(total_time):
-    # Get hours
-    h = total_time/3600
-    hours = int(h)
-
-    # Get minutes
-    remainder = round((h - hours)*3600)
-    m = remainder/60
-    minutes = int(m)
-
-    # Get seconds
-    seconds = round((m - minutes)*60)
-
-    # Get formatted time
-    formatted_time = [f"{hours} hours"] if hours else []
-    if minutes:
-        formatted_time.append(f"{minutes} minutes")
-    if seconds or not formatted_time:
-        formatted_time.append(f"{seconds} seconds")
-    formatted_time = ", ".join(formatted_time)
-
-    return formatted_time
 
 
 def get_network(name):
