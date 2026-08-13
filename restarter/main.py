@@ -191,7 +191,10 @@ def check_for_restarter_code_update(netuid):
 
 
 def run(options):
-    # options.do_check_blacklist_logs = False  # Temporarily force-disabling blacklist logs check
+    # Temporarily turning off blacklist log checking until i can come back to it.
+    # Right now there's too much else to do and almost every notification has been
+    # a false positive.
+    options.do_check_blacklist_logs = False
 
     if DEBUG:
         logger.enable_debug()
