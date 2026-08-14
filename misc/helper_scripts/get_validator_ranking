@@ -80,7 +80,10 @@ async def get_metagraphs():
 
         # Get the metagraph for each netuid
         metagraphs = await asyncio.gather(
-            *[subtensor_snapshot.subnets.metagraph(netuid) for netuid in netuids]
+            *[
+                subtensor_snapshot.subnets.metagraph(netuid, commitments=False)
+                for netuid in netuids
+            ]
         )
 
     return metagraphs
