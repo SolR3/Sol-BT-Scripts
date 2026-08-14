@@ -97,7 +97,9 @@ class GetValidatorWeights:
             self._subtensor = subtensor.at(subtensor.block)
 
             self._block = self._subtensor.block
-            self._metagraph = self._subtensor.subnets.metagraph(self._netuid)
+            self._neurons = self._subtensor.neurons.all(self._netuid)
+            self._hotkeys = [n.hotkey for n in self._neurons]
+            self._coldkeys = [n.coldkey for n in self._neurons]
             self._weights = self._subtensor.weights.weights(netuid=self._netuid, mechid=self._mechid)
             self._vtrusts = self._subtensor.query(
                 bittensor.storage.SubtensorModule.ValidatorTrust,
@@ -125,10 +127,13 @@ class GetValidatorWeights:
         text.append(f"\nOwner:\n==========\n{owner_uid} - {owner_keys}\n\n\n")
         text.append("Weights:\n==========\n")
 
-        for validator in self._metagraph.validators:
-            uid = validator.uid
-            coldkey = validator.coldkey
-            hotkey = validator.hotkey
+        for neuron in self._neurons:
+            if not neuron.validator_permit:
+                continue
+
+            uid = neuron.uid
+            coldkey = neuron.coldkey
+            hotkey = neuron.hotkey
 
             name = None
             if coldkey in owner_coldkeys:
@@ -165,8 +170,8 @@ class GetValidatorWeights:
         updated_b = self._get_updated(uid_b)
 
         print("Hotkeys:\n=========")
-        print(f"{uid_a:<3} - {self._metagraph.hotkeys[uid_a]} (vT: {vtrust_a:.3f}  U: {updated_a})")
-        print(f"{uid_b:<3} - {self._metagraph.hotkeys[uid_b]} (vT: {vtrust_b:.3f}  U: {updated_b})")
+        print(f"{uid_a:<3} - {self._hotkeys[uid_a]} (vT: {vtrust_a:.3f}  U: {updated_a})")
+        print(f"{uid_b:<3} - {self._hotkeys[uid_b]} (vT: {vtrust_b:.3f}  U: {updated_b})")
         print("")
 
         weight_diffs = self._get_weight_diffs(uid_a, uid_b)
@@ -180,27 +185,33 @@ class GetValidatorWeights:
                 print("")
 
     def _get_owner(self):
-        owner_hotkey = self._metagraph.owner_hotkey
-        owner_coldkey = self._metagraph.owner_coldkey
+        owner_hotkey = self._subtensor.query(
+            bittensor.storage.SubtensorModule.SubnetOwnerHotkey,
+            params=[self._netuid],
+        )
+        owner_coldkey = self._subtensor.query(
+            bittensor.storage.SubtensorModule.SubnetOwner,
+            params=[self._netuid],
+        )
 
-        if owner_hotkey in self._metagraph.hotkeys:
-            owner_uid = self._metagraph.hotkeys.index(owner_hotkey)
-            owner_coldkeys = set([owner_coldkey, self._metagraph.coldkeys[owner_uid]])
+        if owner_hotkey in self._hotkeys:
+            owner_uid = self._hotkeys.index(owner_hotkey)
+            owner_coldkeys = set([owner_coldkey, self._coldkeys[owner_uid]])
 
-        elif owner_coldkey in self._metagraph.coldkeys:
+        elif owner_coldkey in self._coldkeys:
             # Should only happen for subnet 104
             Console().print(Text(
-                f"WARNING: Owner hotkey {owner_hotkey} is not in the metagraph.",
+                f"WARNING: Owner hotkey {owner_hotkey} is not registered.",
                 style="color(11)"))
-            owner_uid = self._metagraph.coldkeys.index(owner_coldkey)
-            owner_hotkey = self._metagraph.hotkeys[owner_uid]
+            owner_uid = self._coldkeys.index(owner_coldkey)
+            owner_hotkey = self._hotkeys[owner_uid]
             owner_coldkeys = set([owner_coldkey])
 
         else:
             # Should never happen
             Console().print(Text(
                 f"ERROR: Owner hotkey {owner_hotkey} and owner coldkey {owner_coldkey} "
-                "are not in the metagraph.", style="color(9)"))
+                "are not registered.", style="color(9)"))
             owner_uid = None
             owner_hotkey = None
             owner_coldkeys = set()
@@ -217,7 +228,7 @@ class GetValidatorWeights:
                 uid = int(diff_val)
             except ValueError:
                 try:
-                    uid = self._metagraph.hotkeys.index(diff_val)
+                    uid = self._hotkeys.index(diff_val)
                 except ValueError:
                     uid = self._get_uid_from_vali_name(diff_val)
 
@@ -234,8 +245,8 @@ class GetValidatorWeights:
     def _get_uid_from_vali_name(self, vali_name):
         for coldkey, name in LEGIT_VALI_COLDKEYS.items():
             if name.lower() == vali_name.lower():
-                if coldkey in self._metagraph.coldkeys:
-                    return self._metagraph.coldkeys.index(coldkey)
+                if coldkey in self._coldkeys:
+                    return self._coldkeys.index(coldkey)
                 return None
 
     def _get_vtrust(self, uid):
