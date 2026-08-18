@@ -14,5 +14,3 @@ LOCAL_SUBTENSORS = [
     "ws://subtensor-lite-archive.rizzo.network:9933",
     "ws://192.168.69.55:9944 (local archive)",
 ]
-
-FINNEY_INTERVAL = 360  # In minutes (6 hours)

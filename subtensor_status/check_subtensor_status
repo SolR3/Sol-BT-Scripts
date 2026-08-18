@@ -18,7 +18,6 @@ from subtensor_constants import (
     FINNEY_BLOCK_FILE_NAME,
     TIMESTAMP_FILE_NAME,
     LOCAL_SUBTENSORS,
-    FINNEY_INTERVAL,
 )
 from subtensor_utils import (
     FinneyBlockData,
@@ -48,7 +47,7 @@ def _parse_args():
     )
 
     parser.add_argument(
-        "-f", "--finney-block-folder",
+        "--finney-block-folder",
         help="The json folder in which to read the finney block json file. If this "
                 "is specified then the finney block is read from the file. If not "
                 "specified then the finney block is obtained from the subtensor."
@@ -61,6 +60,14 @@ def _parse_args():
         help="The number of minutes between validator data gathering. If 0 or not "
              "specified then the data is gathered only once."
     )
+
+    parser.add_argument(
+            "--finney-block-interval",
+            type=float,
+            default=360,
+            help="The number of minutes between gathering the finney block. Default "
+                 "is 360 minutes (6 hours)."
+        )
 
     return parser.parse_args()
 
@@ -225,7 +232,7 @@ def main(options):
 
         if minutes_until_get_finney_block <= 0:
             finney_block = get_finney_block(options)
-            minutes_until_get_finney_block = FINNEY_INTERVAL
+            minutes_until_get_finney_block = options.finney_block_interval
         else:
             logger.info(
                 "Not getting finney block. %i minutes left.", minutes_until_get_finney_block
