@@ -20,6 +20,7 @@ from .checker_stopped_logs import (
     ValidatorCheckerPm2StoppedLogs,
 )
 from .checker_subtensor import ValidatorCheckerSubtensor
+from .checker_system import ValidatorCheckerSystemMemory
 from .constants import (
     AT_SOL,
     AT_USERS,
@@ -250,6 +251,15 @@ def run(options):
                 descriptor="vTrust value",
                 checker_class=ValidatorCheckerSubtensor,
                 set_options=(("checker_type", "VTrust"),)
+            )
+        )
+
+    # Add system memory check
+    if options.do_check_mem:
+        restart_checks.append(
+            RestartChecker(
+                descriptor="system memory",
+                checker_class=ValidatorCheckerSystemMemory,
             )
         )
 

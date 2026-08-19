@@ -5,6 +5,7 @@ import argparse
 from .constants import (
     DEFAULT_UPDATED_THRESHOLD,
     DEFAULT_VTRUST_THRESHOLD,
+    DEFAULT_MEM_THRESHOLD,
     DEFAULT_STOPPED_LOGS_THRESHOLD,
     DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME,
     )
@@ -86,6 +87,13 @@ def parse_args():
              f"Default: {DEFAULT_VTRUST_THRESHOLD}")
 
     parser.add_argument(
+            "--mem-threshold",
+            type=int,
+            default=DEFAULT_MEM_THRESHOLD,
+            help="The used memory percentage threshold above which to restart the "
+                 f"validator. Default: {DEFAULT_MEM_THRESHOLD}")
+
+    parser.add_argument(
         "--stopped-logs-threshold",
         type=float,
         default=DEFAULT_STOPPED_LOGS_THRESHOLD,
@@ -124,7 +132,15 @@ def parse_args():
         help="When specified, this will do the checking of the vTrust value. "
              "Note: Unlike most of the other checks, this one is opt-in "
              "rather than opt-out.")
-    
+
+    parser.add_argument(
+        "--do-mem-check",
+        action="store_true",
+        dest="do_check_mem",
+        help="When specified, this will check the system memory usage. "
+             "Note: Unlike most of the other checks, this one is opt-in "
+             "rather than opt-out.")
+
     parser.add_argument(
         "--skip-code-check",
         action="store_false",
