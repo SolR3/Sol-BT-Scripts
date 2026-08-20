@@ -27,25 +27,14 @@ from helper_scripts_common import (
 )
 
 
-@dataclass
-class StakeData:
-    @dataclass
-    class AlphaTuple:
-        stake: float
-        price: float
-
-    stake_in_alpha: dict = field(default_factory=dict)
-    stake_in_tao: float = 0.0
-
-
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    # parser.add_argument(
-    #     "type",
-    #     choices=["stake", "reg", "vt", "vtea"],
-    #     help="Only display the top validators up to this number. For example, "
-    #             "--top 50 shows only the top 50 validators.")
+    parser.add_argument(
+        "--type",
+        choices=["stake", "num-subnets", "emission"],
+        required=True,
+        help="The criteria by which to rank the validator.")
 
     parser.add_argument(
         "--top",
@@ -64,90 +53,187 @@ def parse_args():
     return parser.parse_args()
 
 
-async def get_metagraphs():
-    network = get_lite_subtensor_network(args.local_subtensor)
-    print(f"Connecting to {network}")
+class RankBase:
+    def __init__(self, args):
+        self._top = args.top
+        self._local_subtensor = args.local_subtensor
+        self._run()
 
-    async with bittensor.Subtensor(network=network) as subtensor:
-        # Get a snapshot of the subtensor at the current block so everything is in sync
-        # in case data gathering take multiple blocks.
-        block = await subtensor.block()
-        subtensor_snapshot = await subtensor.at(block)
+    def _run(self):
+        asyncio.run(self._get_data_from_subtensor())
+        self._get_validator_ranking()
+        self._print_validator_ranking()
 
-        # Get all subnets
-        subnets = await subtensor_snapshot.subnets.all()
-        netuids = [sn.netuid for sn in subnets][1:]
+    async def _get_data_from_subtensor(self):
+        network = get_lite_subtensor_network(self._local_subtensor)
+        print(f"Connecting to {network}")
 
+        async with bittensor.Subtensor(network=network) as subtensor:
+            # Get a snapshot of the subtensor at the current block so everything is in sync
+            # in case data gathering takes multiple blocks.
+            block = await subtensor.block()
+            snapshot = await subtensor.at(block)
+
+            # Get all subnets
+            subnets = await snapshot.subnets.all()
+            netuids = [sn.netuid for sn in subnets][1:]
+
+            await self._get_validator_data(snapshot, netuids)
+
+    async def _get_validator_data(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def _update_validator_ranking(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def _print_validator_ranking(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @staticmethod
+    def _get_vali_name_and_color(coldkey):
+        if coldkey in LEGIT_VALI_COLDKEYS:
+            name = LEGIT_VALI_COLDKEYS[coldkey]
+            color = "bright_green" if name == "Rizzo" else "bright_blue"
+
+        elif coldkey in WEIGHT_COPIER_COLDKEYS:
+            name = WEIGHT_COPIER_COLDKEYS[coldkey]
+            color = "bright_red"
+
+        else:
+            name = coldkey[:6] + "..." + coldkey[-6:]
+            color = "default"
+
+        return name, color
+
+
+class RankStake(RankBase):
+
+    @dataclass
+    class StakeData:
+        @dataclass
+        class AlphaTuple:
+            stake: float
+            price: float
+
+        stake_in_alpha: dict = field(default_factory=dict)
+        stake_in_tao: float = 0.0
+
+    async def _get_validator_data(self, snapshot, netuids):
         # Get the metagraph for each netuid
-        metagraphs = await asyncio.gather(
+        self._metagraphs = await asyncio.gather(
             *[
-                subtensor_snapshot.subnets.metagraph(netuid, commitments=False)
+                snapshot.subnets.metagraph(netuid, commitments=False)
                 for netuid in netuids
             ]
         )
 
-    return metagraphs
+    def _get_validator_ranking(self):
+        self._validators_stake = {}
+        for metagraph in self._metagraphs:
+            self._update_validators_stake(metagraph)
+
+    def _update_validators_stake(self, metagraph):
+        alpha_price = metagraph.price
+        for validator in metagraph.validators:
+            stake_in_alpha = validator.total_stake.amount
+            stake_in_tao = stake_in_alpha * alpha_price
+
+            stake_data = self._validators_stake.setdefault(validator.coldkey, self.StakeData())
+            stake_data.stake_in_alpha[metagraph.netuid] = \
+                self.StakeData.AlphaTuple(stake=stake_in_alpha, price=alpha_price)
+            stake_data.stake_in_tao += stake_in_tao
+
+    def _print_validator_ranking(self):
+        def get_tao_stake(coldkey):
+            return self._validators_stake[coldkey].stake_in_tao
+
+        print("")
+        text = Text()
+
+        num_total = self._top or len(self._validators_stake)
+
+        for rank, coldkey in enumerate(reversed(sorted(
+            self._validators_stake, key=get_tao_stake
+        )), 1):
+
+            if rank > num_total:
+                break
+
+            name, color = self._get_vali_name_and_color(coldkey)
+            stake_data = self._validators_stake[coldkey]
+
+            text.append(f"{rank:<2} - ")
+            text.append(f"{name:<15}", style=color)
+            text.append("  --  ")
+            text.append(f"{stake_data.stake_in_tao:.3f}\n", style=color)
+
+        Console().print(text)
 
 
-def update_validators_stake(validators_stake, metagraph):
-    alpha_price = metagraph.price
-    for validator in metagraph.validators:
-        stake_in_alpha = validator.total_stake.amount
-        stake_in_tao = stake_in_alpha * alpha_price
+class RankNumSubnets(RankBase):
 
-        stake_data = validators_stake.setdefault(validator.coldkey, StakeData())
-        stake_data.stake_in_alpha[metagraph.netuid] = \
-            StakeData.AlphaTuple(stake=stake_in_alpha, price=alpha_price)
-        stake_data.stake_in_tao += stake_in_tao
+    async def _get_validator_data(self, snapshot, netuids):
+        # Get the metagraph for each netuid
+        self._metagraphs = await asyncio.gather(
+            *[
+                snapshot.subnets.metagraph(netuid, commitments=False)
+                for netuid in netuids
+            ]
+        )
+
+    def _get_validator_ranking(self):
+        self._total_subnets = {}
+        for metagraph in self._metagraphs:
+            for validator in metagraph.validators:
+                total_subnets = self._total_subnets.setdefault(validator.coldkey, 0)
+                self._total_subnets[validator.coldkey] = total_subnets + 1
+
+    def _print_validator_ranking(self):
+        def get_total_subnets(coldkey):
+            return self._total_subnets[coldkey]
+
+        print("")
+        text = Text()
+
+        num_total = self._top or len(self._total_subnets)
+
+        for rank, coldkey in enumerate(reversed(sorted(
+            self._total_subnets, key=get_total_subnets
+        )), 1):
+
+            if rank > num_total:
+                break
+
+            name, color = self._get_vali_name_and_color(coldkey)
+            total_subnets = self._total_subnets[coldkey]
+
+            text.append(f"{rank:<2} - ")
+            text.append(f"{name:<15}", style=color)
+            text.append("  --  ")
+            text.append(f"{total_subnets}\n", style=color)
+
+        Console().print(text)
 
 
-def print_stake_rankings(validators_stake, num_total):
-    def get_tao_stake(coldkey):
-        return validators_stake[coldkey].stake_in_tao
-
-    print("")
-    text = Text()
-
-    for rank, coldkey in enumerate(reversed(sorted(validators_stake, key=get_tao_stake)), 1):
-        if rank > num_total:
-            break
-
-        text.append(f"{rank:<2} - ")
-        if coldkey in LEGIT_VALI_COLDKEYS:
-            name = LEGIT_VALI_COLDKEYS[coldkey]
-            color = 10 if name == "Rizzo" else 12
-            style = f"color({color})"
-        elif coldkey in WEIGHT_COPIER_COLDKEYS:
-            name = WEIGHT_COPIER_COLDKEYS[coldkey]
-            color = 9
-            style = f"color({color})"
-        else:
-            name = coldkey[:6] + "..." + coldkey[-6:]
-            style = None
-        text.append(f"{name:<15}", style=style)
-
-        stake_data = validators_stake[coldkey]
-        text.append("  --  ")
-        text.append(f"{stake_data.stake_in_tao:.3f}\n", style=style)
-
-    Console().print(text)
+class RankEmission(RankBase):
+    pass
 
 
-async def main(args):
-    metagraphs = await get_metagraphs()
+def main():
+    args = parse_args()
 
-    validators_stake = {}
-    for metagraph in metagraphs:
-        update_validators_stake(validators_stake, metagraph)
+    validator_ranker = {
+        "stake": RankStake,
+        "num-subnets": RankNumSubnets,
+        "emission": RankEmission,
+    }.get(args.type)
 
-    num_total = args.top or len(validators_stake)
-    print_stake_rankings(validators_stake, num_total)
+    validator_ranker(args)
 
 
 if __name__ == "__main__":
     try:
-        args = parse_args()
-        asyncio.run(main(args))
+        main()
     except KeyboardInterrupt as exc:
         import traceback
         exc_list = traceback.format_exception_only(exc)
