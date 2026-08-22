@@ -7,7 +7,7 @@
 # Standard imports
 import argparse
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, fields
 import os
 from rich.text import Text
 from rich.console import Console
@@ -31,8 +31,9 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--type",
-        choices=["stake", "num-subnets", "emission"],
+        "--sort",
+        type=int,
+        choices=list(range(1, len(fields(RankValidators.ValidatorData)) + 1)),
         required=True,
         help="The criteria by which to rank the validator.")
 
@@ -53,15 +54,42 @@ def parse_args():
     return parser.parse_args()
 
 
-class RankBase:
+class RankValidators:
+
+    @dataclass
+    class ValidatorData:
+        # Total number of subnets on which the validator is setting weights.
+        total_subnets: int = 0
+
+        # Total number of subnets with emission on which the validator is setting weights.
+        total_emitting_subnets: int = 0
+
+        # Total stake on subnets being validated on.
+        total_stake: float = 0.0
+
+        # Total stake on subnets being validated on weighted by emission.
+        total_emission_stake: float = 0.0
+
+        # Average vTrust weighted by emission.
+        weighted_vtrust: float = 0.0
+
+        # Total validator dividends per 100,000 stake.
+        normalized_dividends: float = 0.0
+
+        # Total validator emission per 100,000 stake.
+        # I think this one isn't very accurate because it looks like the emission values
+        # also include emissions to the subnet owner.
+        # normalized_emission: float = 0.0
+
     def __init__(self, args):
+        self._sort = args.sort
         self._top = args.top
         self._local_subtensor = args.local_subtensor
         self._run()
 
     def _run(self):
         asyncio.run(self._get_data_from_subtensor())
-        self._get_validator_ranking()
+        self._get_validator_stats()
         self._print_validator_ranking()
 
     async def _get_data_from_subtensor(self):
@@ -74,20 +102,194 @@ class RankBase:
             block = await subtensor.block()
             snapshot = await subtensor.at(block)
 
-            # Get all subnets
+            # Get all subnets.
             subnets = await snapshot.subnets.all()
             netuids = [sn.netuid for sn in subnets][1:]
+            self._total_subnets = len(netuids)
 
-            await self._get_validator_data(snapshot, netuids)
+            # Get the metagraph for each netuid.
+            self._metagraphs = await asyncio.gather(
+                *[
+                    snapshot.subnets.metagraph(netuid, commitments=False)
+                    for netuid in netuids
+                ]
+            )
 
-    async def _get_validator_data(self, *args, **kwargs):
-        raise NotImplementedError
+            # Get the mech splits for each subnet as a list of fractions.
+            self._mech_splits = await asyncio.gather(
+                *[self._get_mech_splits(snapshot, netuid) for netuid in netuids]
+            )
 
-    def _update_validator_ranking(self, *args, **kwargs):
-        raise NotImplementedError
+            # Get the emission for each subnet as a fraction of the total emission.
+            self._subnet_emissions = await self._get_subnet_emissions(snapshot, netuids)
 
-    def _print_validator_ranking(self, *args, **kwargs):
-        raise NotImplementedError
+            # Get the validators' vTrusts for each subnet.
+            self._vtrusts = await asyncio.gather(
+                *[self._get_subnet_vtrusts(snapshot, netuid) for netuid in netuids]
+            )
+
+            # Get the validators' updated blocks for each mech on each subnet.
+            self._updateds = await asyncio.gather(
+                *[self._get_subnet_updateds(snapshot, netuid) for netuid in netuids]
+            )
+
+    async def _get_mech_splits(self, snapshot, netuid):
+        # mechanism_emission_split will return None for subnets that have one mech
+        # so replace None with a list with a single emission fraction of 1.0
+        mech_split = await snapshot.subnets.mechanism_emission_split(netuid)
+        return (
+            [(m / bittensor.settings.U16_MAX) for m in mech_split]
+            if mech_split else [1.0]
+        )
+
+    async def _get_subnet_emissions(self, snapshot, netuids):
+        tao_emission = await asyncio.gather(
+            *[
+                snapshot.query(
+                    bittensor.storage.SubtensorModule.SubnetTaoInEmission,
+                    params=[netuid]
+                )
+            for netuid in netuids
+            ]
+        )
+        excess_tao = await asyncio.gather(
+            *[
+                snapshot.query(
+                    bittensor.storage.SubtensorModule.SubnetExcessTao,
+                    params=[netuid]
+                )
+            for netuid in netuids
+            ]
+        )
+        raw_emission = [tao_emission[ni] + excess_tao[ni] for ni in range(self._total_subnets)]
+        total_emission = sum(raw_emission)
+        return [e / total_emission for e in raw_emission]
+
+    async def _get_subnet_vtrusts(self, snapshot, netuid):
+        raw_vtrusts = await snapshot.query(
+            bittensor.storage.SubtensorModule.ValidatorTrust,
+            params=[netuid]
+        )
+        return [vt / bittensor.settings.U16_MAX for vt in raw_vtrusts]
+
+    async def _get_subnet_updateds(self, snapshot, netuid):
+        updateds = []
+        mechs = await snapshot.subnets.mechanism_count(netuid)
+        for mechid in range(mechs):
+            last_updates_index = mechid * bittensor.settings.GLOBAL_MAX_SUBNET_COUNT + netuid
+            last_updates = await snapshot.query(
+                bittensor.storage.SubtensorModule.LastUpdate,
+                params=[last_updates_index]
+            )
+            updateds.append([snapshot.block - lu for lu in last_updates])
+        return updateds
+
+    def _get_validator_stats(self):
+        self._validator_data = {}
+
+        # Loop through all metagraphs and gather up all validator data.
+        for ni in range(self._total_subnets):
+            metagraph = self._metagraphs[ni]
+            mech_split = self._mech_splits[ni]
+            subnet_emission = self._subnet_emissions[ni]
+            vtrust = self._vtrusts[ni]
+            updated = self._updateds[ni]
+            alpha_price = metagraph.price
+
+            for validator in metagraph.validators:
+                validator_data = self._validator_data.setdefault(
+                    validator.coldkey, self.ValidatorData()
+                )
+
+                # Some owner neurons have a validator permit but no stake.
+                if not validator.total_stake.alpha:
+                    continue
+
+                # Filter validators by last updated. If the validator's updated value
+                # for any non-zero emission mechanism < 5000 then it can be considered
+                # as legitimately validating.
+                for mechid, mech_emission in enumerate(mech_split):
+                    if mech_emission and updated[mechid][validator.uid] < 5000:
+                        break
+                else:
+                    continue
+
+                # Total number of subnets on which the validator is setting weights.
+                validator_data.total_subnets += 1
+
+                # Total number of subnets with emission on which the validator is setting weights.
+                if subnet_emission:
+                    validator_data.total_emitting_subnets += 1
+
+                # Total stake on subnets being validated on.
+                validator_data.total_stake += validator.total_stake.alpha * alpha_price
+
+                # Total stake on subnets being validated on weighted by emission.
+                validator_data.total_emission_stake += (
+                    validator.total_stake.alpha * alpha_price * subnet_emission
+                )
+
+                # Average vTrust weighted by emission.
+                validator_data.weighted_vtrust += vtrust[validator.uid] * subnet_emission
+
+                # Total validator dividends per 100,000 stake.
+                validator_data.normalized_dividends += (
+                    100000 * validator.dividends / validator.total_stake.alpha * subnet_emission
+                )
+
+                # Total validator emission per 100,000 stake.
+                # I think this one isn't very accurate because it looks like the emission values
+                # also include emissions to the subnet owner.
+                # validator_data.normalized_emission += (
+                #     100000 * validator.emission.alpha / validator.total_stake.alpha * subnet_emission
+                # )
+
+    def _print_validator_ranking(self):
+
+        def get_sort_key(coldkey):
+            validator_data = self._validator_data[coldkey]
+            sort_attr = fields(validator_data)[self._sort - 1].name
+            return getattr(validator_data, sort_attr)
+
+        print("")
+        text = Text()
+        text.append("Total number of subnets on which the validator is setting weights.\n")
+        text.append("Total number of subnets with emission on which the validator is setting weights.\n")
+        text.append("Total stake on subnets being validated on.\n")
+        text.append("Total stake on subnets being validated on weighted by emission.\n")
+        text.append("Average vTrust weighted by emission.\n")
+        text.append("Total validator dividends per 100,000 stake.\n")
+        # text.append("Total validator emission per 100,000 stake.\n")
+        text.append("\n")
+
+        num_total = self._top or len(self._validator_data)
+
+        for rank, coldkey in enumerate(reversed(sorted(
+            self._validator_data, key=get_sort_key
+        )), 1):
+
+            if rank > num_total:
+                break
+
+            name, color = self._get_vali_name_and_color(coldkey)
+            validator_data = self._validator_data[coldkey]
+
+            text.append(f"{rank:<2} - ")
+            text.append(f"{name:<15}", style=color)
+            text.append("  --  ")
+            text.append(
+                f"{validator_data.total_subnets:<5}"
+                f"{validator_data.total_emitting_subnets:<5}"
+                f"{int(validator_data.total_stake):<8}"
+                f"{int(validator_data.total_emission_stake):<8}"
+                f"{validator_data.weighted_vtrust:<7.3f}"
+                f"{validator_data.normalized_dividends:9.5f}"
+                # f"{validator_data.normalized_emission:8.4f}"
+                "\n",
+                style=color
+            )
+
+        Console().print(text)
 
     @staticmethod
     def _get_vali_name_and_color(coldkey):
@@ -106,129 +308,9 @@ class RankBase:
         return name, color
 
 
-class RankStake(RankBase):
-
-    @dataclass
-    class StakeData:
-        @dataclass
-        class AlphaTuple:
-            stake: float
-            price: float
-
-        stake_in_alpha: dict = field(default_factory=dict)
-        stake_in_tao: float = 0.0
-
-    async def _get_validator_data(self, snapshot, netuids):
-        # Get the metagraph for each netuid
-        self._metagraphs = await asyncio.gather(
-            *[
-                snapshot.subnets.metagraph(netuid, commitments=False)
-                for netuid in netuids
-            ]
-        )
-
-    def _get_validator_ranking(self):
-        self._validators_stake = {}
-        for metagraph in self._metagraphs:
-            self._update_validators_stake(metagraph)
-
-    def _update_validators_stake(self, metagraph):
-        alpha_price = metagraph.price
-        for validator in metagraph.validators:
-            stake_in_alpha = validator.total_stake.amount
-            stake_in_tao = stake_in_alpha * alpha_price
-
-            stake_data = self._validators_stake.setdefault(validator.coldkey, self.StakeData())
-            stake_data.stake_in_alpha[metagraph.netuid] = \
-                self.StakeData.AlphaTuple(stake=stake_in_alpha, price=alpha_price)
-            stake_data.stake_in_tao += stake_in_tao
-
-    def _print_validator_ranking(self):
-        def get_tao_stake(coldkey):
-            return self._validators_stake[coldkey].stake_in_tao
-
-        print("")
-        text = Text()
-
-        num_total = self._top or len(self._validators_stake)
-
-        for rank, coldkey in enumerate(reversed(sorted(
-            self._validators_stake, key=get_tao_stake
-        )), 1):
-
-            if rank > num_total:
-                break
-
-            name, color = self._get_vali_name_and_color(coldkey)
-            stake_data = self._validators_stake[coldkey]
-
-            text.append(f"{rank:<2} - ")
-            text.append(f"{name:<15}", style=color)
-            text.append("  --  ")
-            text.append(f"{stake_data.stake_in_tao:.3f}\n", style=color)
-
-        Console().print(text)
-
-
-class RankNumSubnets(RankBase):
-
-    async def _get_validator_data(self, snapshot, netuids):
-        # Get the metagraph for each netuid
-        self._metagraphs = await asyncio.gather(
-            *[
-                snapshot.subnets.metagraph(netuid, commitments=False)
-                for netuid in netuids
-            ]
-        )
-
-    def _get_validator_ranking(self):
-        self._total_subnets = {}
-        for metagraph in self._metagraphs:
-            for validator in metagraph.validators:
-                total_subnets = self._total_subnets.setdefault(validator.coldkey, 0)
-                self._total_subnets[validator.coldkey] = total_subnets + 1
-
-    def _print_validator_ranking(self):
-        def get_total_subnets(coldkey):
-            return self._total_subnets[coldkey]
-
-        print("")
-        text = Text()
-
-        num_total = self._top or len(self._total_subnets)
-
-        for rank, coldkey in enumerate(reversed(sorted(
-            self._total_subnets, key=get_total_subnets
-        )), 1):
-
-            if rank > num_total:
-                break
-
-            name, color = self._get_vali_name_and_color(coldkey)
-            total_subnets = self._total_subnets[coldkey]
-
-            text.append(f"{rank:<2} - ")
-            text.append(f"{name:<15}", style=color)
-            text.append("  --  ")
-            text.append(f"{total_subnets}\n", style=color)
-
-        Console().print(text)
-
-
-class RankEmission(RankBase):
-    pass
-
-
 def main():
     args = parse_args()
-
-    validator_ranker = {
-        "stake": RankStake,
-        "num-subnets": RankNumSubnets,
-        "emission": RankEmission,
-    }.get(args.type)
-
-    validator_ranker(args)
+    RankValidators(args)
 
 
 if __name__ == "__main__":
