@@ -152,7 +152,8 @@ class ValidatorCheckerGitUpdateBase(ValidatorChecker):
             if do_restart:
                 self._restart_validator(
                     "Pulled new code from git repo.",
-                    force_notify=True
+                    force_notify=True,
+                    git_update_notify=True
                 )
 
             sleep_interval = 900  # 15 minutes

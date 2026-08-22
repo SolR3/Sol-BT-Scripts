@@ -11,7 +11,10 @@ import time
 import bittensor
 
 # Local imports
-from .constants import DISCORD_MONITOR_URL
+from .constants import (
+    DISCORD_MONITOR_URL,
+    DISCORD_MONITOR_GIT_REPO_URL,
+)
 
 
 _pm2_log_output_wait_timer = None
@@ -27,11 +30,14 @@ def set_pm2_log_output_wait_timer(pm2_log_output_wait_timer):
     _pm2_log_output_wait_timer = pm2_log_output_wait_timer
 
 
-def send_monitor_notification(log_prefix, message):
+def send_monitor_notification(log_prefix, message, git_update_notify=False):
+    discord_monitor_url = (
+        DISCORD_MONITOR_GIT_REPO_URL if git_update_notify else DISCORD_MONITOR_URL
+    )
     payload = json.dumps({"content": f"validator restarter: {message}"})
     monitor_cmd = [
         "curl", "-H", "Content-Type: application/json",
-        "-d", payload, DISCORD_MONITOR_URL
+        "-d", payload, discord_monitor_url
     ]
 
     monitor_cmd_str = shlex.join(monitor_cmd)

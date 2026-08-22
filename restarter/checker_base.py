@@ -61,7 +61,7 @@ class ValidatorChecker:
             if os.path.isfile(restart_file_path):
                 os.unlink(restart_file_path)
 
-    def _restart_validator(self, description, force_notify=False):
+    def _restart_validator(self, description, force_notify=False, git_update_notify=False):
         # If the restart_lock is currently acquired then another thread is
         # currently running a restart so just return.
         # Otherwise aquire the restart_lock and run a restart.
@@ -74,9 +74,9 @@ class ValidatorChecker:
             pm2_log_output_wait_timer = get_pm2_log_output_wait_timer()
             if pm2_log_output_wait_timer:
                 pm2_log_output_wait_timer.start_wait_timer()
-            self._do_restart(description, force_notify)
+            self._do_restart(description, force_notify, git_update_notify)
 
-    def _do_restart(self, description, force_notify):
+    def _do_restart(self, description, force_notify, git_update_notify):
         self.log_info(f"Restarting subnet {self._netuid}: {description}.")
         self.log_info(f"Running script: {self._restart_script}")
 
@@ -112,7 +112,8 @@ class ValidatorChecker:
             self.log_error(f"'{restart_cmd_str}' command failed with error: {exc}")
             self._send_restart_monitor_notification(
                 f"{RED_QM} Possibly failed to restart subnet {self._netuid} - {description}",
-                force_notify
+                force_notify,
+                False
             )
             return False
 
@@ -123,14 +124,15 @@ class ValidatorChecker:
         self.log_info(f"Subnet '{self._netuid}' successfully restarted.")
         self._send_restart_monitor_notification(
             f"Successfully restarted on subnet {self._netuid} - {description}",
-            force_notify
+            force_notify,
+            git_update_notify
         )
 
         return True
 
-    def _send_restart_monitor_notification(self, message, force_notify):
+    def _send_restart_monitor_notification(self, message, force_notify, git_update_notify):
         if not force_notify and not self._discord_notify:
             self.log_info("Not sending discord monitor notification.")
             return
 
-        send_monitor_notification(self.log_prefix, message)
+        send_monitor_notification(self.log_prefix, message, git_update_notify=git_update_notify)

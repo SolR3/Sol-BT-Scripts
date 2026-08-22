@@ -22,6 +22,10 @@ DISCORD_MONITOR_URL = (
     "https://discord.com/api/webhooks/1328849265765777468/"
     "yJg07DYWLJyiFZgZPaLGTmFEwiAu2JWW5osyjFVoqlMWT66JBbV9_FOcslvDdtibtcR0"
 )
+DISCORD_MONITOR_GIT_REPO_URL = (
+    "https://discord.com/api/webhooks/1540374974051782696/"
+    "w8R4RQ33Obr2jQt_uDc4_4m3umeKZqXQ2vIFtKp6NPg4CiMY5j477m8BvzD9XbQQ2nXx"
+)
 
 RESTARTER_GIT_PATHS = ["bin/restart_bad_validator", "restarter"]
 
