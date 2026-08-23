@@ -27,6 +27,10 @@ from helper_scripts_common import (
 )
 
 
+LOCAL_TIMEZONE = "MST7MDT"
+JSON_FILE_NAME = "validator_ranking.json"
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
@@ -75,7 +79,7 @@ class RankValidators:
         # Average vTrust weighted by subnet emission.
         weighted_vtrust: float = 0.0
 
-        # Total validator dividends per 100,000 stake.
+        # Total validator dividends per 100,000 stake weighted by subnet emission.
         normalized_dividends: float = 0.0
 
         # Total stake on subnets being validated on.
@@ -84,7 +88,7 @@ class RankValidators:
         # Total stake on subnets being validated on weighted by subnet emission.
         total_emission_stake: float = 0.0
 
-        # Total validator emission per 100,000 stake.
+        # Total validator emission per 100,000 stake weighted by subnet emission.
         # I think this one isn't very accurate because it looks like the emission values
         # also include emissions to the subnet owner.
         # normalized_emission: float = 0.0
@@ -242,12 +246,12 @@ class RankValidators:
                 # Average vTrust weighted by subnet emission.
                 validator_data.weighted_vtrust += vtrust[validator.uid] * subnet_emission
 
-                # Total validator dividends per 100,000 stake.
+                # Total validator dividends per 100,000 stake weighted by subnet emission.
                 validator_data.normalized_dividends += (
                     100000 * validator.dividends / validator.total_stake.alpha * subnet_emission
                 )
 
-                # Total validator emission per 100,000 stake.
+                # Total validator emission per 100,000 stake weighted by subnet emission.
                 # I think this one isn't very accurate because it looks like the emission values
                 # also include emissions to the subnet owner.
                 # validator_data.normalized_emission += (
@@ -273,10 +277,10 @@ class RankValidators:
         text.append("S      -- Total number of subnets on which the validator is setting weights.\n")
         text.append("SE     -- Total number of subnets with emission on which the validator is setting weights.\n")
         text.append("vTW    -- Average vTrust weighted by subnet emission.\n")
-        text.append("DivW   -- Total validator dividends per 100,000 stake.\n")
+        text.append("DivW   -- Total validator dividends per 100,000 stake weighted by subnet emission.\n")
         text.append("Stake  -- Total stake on subnets being validated on.\n")
         text.append("StakeE -- Total stake on subnets being validated on weighted by subnet emission.\n")
-        # text.append("Total validator emission per 100,000 stake.\n")
+        # text.append("Total validator emission per 100,000 stake weighted by subnet emission.\n")
         text.append("\n\n")
 
         text.append("     ")
