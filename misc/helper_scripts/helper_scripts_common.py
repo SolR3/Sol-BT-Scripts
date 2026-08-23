@@ -1,6 +1,11 @@
 # standard imports
+import logging
 import random
+import sys
+import time
 
+
+LOCAL_TIMEZONE = "MST7MDT"
 
 LEGIT_VALI_COLDKEYS = {
     "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo": "Rizzo",
@@ -10,7 +15,6 @@ LEGIT_VALI_COLDKEYS = {
     "5FHxxe8ZKYaNmGcSLdG5ekxXeZDhQnk9cbpHdsJW8RunGpSs": "Kraken",
     "5DXiV1gqHRQKop5RZA5ywvcZ9bW1p7CmwuSAT8R6143jXUWg": "TAO.com",
 }
-
 
 WEIGHT_COPIER_COLDKEYS = {
     "5EJAqczgzCMvWcmXhKMZH4vMS5gPy8BjeuHjz5o5yN6RYzX2": "Tao5 (WC)",
@@ -26,6 +30,10 @@ WEIGHT_COPIER_COLDKEYS = {
     "5CqsgERpW6dJn4AtTkfckcUd7Ab6JNVa2Hb2MhyjApYVXMUV": "MUV",
     "5DywxdtESjskgPZrDXL86qV44SpPgJuqs9X6noyJJwX9PaSD": "General Tensor",
 }
+
+
+class SubtensorConnectionError(Exception):
+    pass
 
 
 def _create_get_lite_subtensor_network():
@@ -86,3 +94,38 @@ def get_formatted_time(total_time):
     formatted_time = ", ".join(formatted_time)
 
     return formatted_time
+
+
+class Logger:
+
+    class BtDateFormatter(logging.Formatter):
+        def formatTime(self, record, datefmt=None):
+            created = self.converter(record.created)
+            if datefmt:
+                s = time.strftime(datefmt, created)
+            else:
+                s = time.strftime("%Y-%m-%d %H:%M:%S", created)
+            s += f".{int(record.msecs):03d}"
+            return s
+
+    def __init__(self):
+        self.__logger = None
+
+    @property
+    def _logger(self):
+        if not self.__logger:
+            handler = logging.StreamHandler(sys.stdout)
+            handler.setFormatter(self.BtDateFormatter("%(asctime)s | %(levelname)s | %(message)s"))
+        
+            self.__logger = logging.getLogger("")
+            self.__logger.addHandler(handler)
+            self.__logger.setLevel(logging.INFO)
+            self.__logger.propagate = False
+
+        return self.__logger
+
+    def __getattr__(self, name):
+        return getattr(self._logger, name)
+
+
+logger = Logger()

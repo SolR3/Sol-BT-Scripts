@@ -7,11 +7,14 @@
 # Standard imports
 import argparse
 import asyncio
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, asdict
+import json
+import multiprocessing
 import os
 from rich.text import Text
 from rich.console import Console
 import sys
+import time
 
 # Bittensor import
 import bittensor
@@ -21,13 +24,16 @@ sys.path = [os.path.dirname(__file__)] + sys.path
 
 # Local imports
 from helper_scripts_common import (
-    get_lite_subtensor_network,
+    LOCAL_TIMEZONE,
     LEGIT_VALI_COLDKEYS,
     WEIGHT_COPIER_COLDKEYS,
+    logger,
+    get_formatted_time,
+    get_lite_subtensor_network,
+    SubtensorConnectionError,
 )
 
 
-LOCAL_TIMEZONE = "MST7MDT"
 JSON_FILE_NAME = "validator_ranking.json"
 
 
@@ -35,25 +41,44 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
+        "-j", "--json-folder",
+        help="If this is specified then the validator rankings are written to a json file "
+                "in the specified folder. If not specified then the validator rankings are "
+                "printed to stdout."
+    )
+
+    parser.add_argument(
+        "-i", "--interval",
+        type=float,
+        default=0,
+        help="The number of minutes between validator data gathering. If 0 or not "
+             "specified then the data is gathered only once."
+    )
+
+    parser.add_argument(
+        "--min-subnets",
+        type=int,
+        default=1,
+        help="Only display the validators validating on at least this number of "
+                "subnets. The default value is 1, do each displayed validator must "
+                "be validating on at least 1 subnet."
+    )
+
+    parser.add_argument(
         "--sort",
         type=int,
         choices=list(range(1, len(fields(RankValidators.ValidatorData)) + 1)),
-        required=True,
-        help="The criteria by which to rank the validator.")
+        default=1,
+        help="The criteria by which to rank the validator. The choices are the column "
+             "numbers of the printout. The default is the first column."
+    )
 
     parser.add_argument(
         "--top",
         type=int,
         help="Only display the top validators up to this number. For example, "
-             "--top 50 shows only the top 50 validators.")
-
-    parser.add_argument(
-            "--min-subnets",
-            type=int,
-            default=1,
-            help="Only display the validators validating on at least this number of "
-                 "subnets. The default value is 1, do each displayed validator must "
-                 "be validating on at least 1 subnet.")
+             "--top 50 shows only the top 50 validators."
+    )
 
     parser.add_argument(
         "-l", "--local-subtensor",
@@ -94,58 +119,68 @@ class RankValidators:
         # normalized_emission: float = 0.0
 
     def __init__(self, args):
+        self._min_subnets = args.min_subnets
+        self._json_folder = args.json_folder
         self._sort = args.sort
         self._top = args.top
-        self._min_subnets = args.min_subnets
-        self._local_subtensor = args.local_subtensor
+        self._network = args.network
         self._run()
 
     def _run(self):
         asyncio.run(self._get_data_from_subtensor())
         self._get_validator_stats()
-        self._filter_not_validating()
-        self._print_validator_ranking()
+        self._filter_validators()
+        if self._json_folder:
+            self._write_json_file()
+        else:
+            self._print_validator_ranking()
 
     async def _get_data_from_subtensor(self):
-        network = get_lite_subtensor_network(self._local_subtensor)
-        print(f"Connecting to {network}")
+        logger.info(f"Connecting to {self._network}")
 
-        async with bittensor.Subtensor(network=network) as subtensor:
-            # Get a snapshot of the subtensor at the current block so everything is in sync
-            # in case data gathering takes multiple blocks.
-            block = await subtensor.block()
-            snapshot = await subtensor.at(block)
+        try:
+            async with bittensor.Subtensor(network=self._network) as subtensor:
+                # Get a snapshot of the subtensor at the current block so everything is in sync
+                # in case data gathering takes multiple blocks.
+                block = await subtensor.block()
+                snapshot = await subtensor.at(block)
 
-            # Get all subnets.
-            subnets = await snapshot.subnets.all()
-            netuids = [sn.netuid for sn in subnets][1:]
-            self._total_subnets = len(netuids)
+                # Get all subnets.
+                subnets = await snapshot.subnets.all()
+                netuids = [sn.netuid for sn in subnets][1:]
+                self._total_subnets = len(netuids)
 
-            # Get the metagraph for each netuid.
-            self._metagraphs = await asyncio.gather(
-                *[
-                    snapshot.subnets.metagraph(netuid, commitments=False)
-                    for netuid in netuids
-                ]
-            )
+                # Get the metagraph for each netuid.
+                self._metagraphs = await asyncio.gather(
+                    *[
+                        snapshot.subnets.metagraph(netuid, commitments=False)
+                        for netuid in netuids
+                    ]
+                )
 
-            # Get the mech splits for each subnet as a list of fractions.
-            self._mech_splits = await asyncio.gather(
-                *[self._get_mech_splits(snapshot, netuid) for netuid in netuids]
-            )
+                # Get the mech splits for each subnet as a list of fractions.
+                self._mech_splits = await asyncio.gather(
+                    *[self._get_mech_splits(snapshot, netuid) for netuid in netuids]
+                )
 
-            # Get the emission for each subnet as a fraction of the total emission.
-            self._subnet_emissions = await self._get_subnet_emissions(snapshot, netuids)
+                # Get the emission for each subnet as a fraction of the total emission.
+                self._subnet_emissions = await self._get_subnet_emissions(snapshot, netuids)
 
-            # Get the validators' vTrusts for each subnet.
-            self._vtrusts = await asyncio.gather(
-                *[self._get_subnet_vtrusts(snapshot, netuid) for netuid in netuids]
-            )
+                # Get the validators' vTrusts for each subnet.
+                self._vtrusts = await asyncio.gather(
+                    *[self._get_subnet_vtrusts(snapshot, netuid) for netuid in netuids]
+                )
 
-            # Get the validators' updated blocks for each mech on each subnet.
-            self._updateds = await asyncio.gather(
-                *[self._get_subnet_updateds(snapshot, netuid) for netuid in netuids]
-            )
+                # Get the validators' updated blocks for each mech on each subnet.
+                self._updateds = await asyncio.gather(
+                    *[self._get_subnet_updateds(snapshot, netuid) for netuid in netuids]
+                )
+        except Exception as err:
+            logger.error("")
+            logger.error(f"Subtensor connection failed on '{self._network}'")
+            logger.error(f"{type(err).__name__}: {err}")
+            logger.error("")
+            raise SubtensorConnectionError
 
     async def _get_mech_splits(self, snapshot, netuid):
         # mechanism_emission_split will return None for subnets that have one mech
@@ -258,11 +293,42 @@ class RankValidators:
                 #     100000 * validator.emission.alpha / validator.total_stake.alpha * subnet_emission
                 # )
 
-    def _filter_not_validating(self):
+    def _filter_validators(self):
         for coldkey in list(self._validator_data):
             validator_data = self._validator_data[coldkey]
             if validator_data.total_subnets < self._min_subnets:
                 del self._validator_data[coldkey]
+
+    def _write_json_file(self):
+        json_file = os.path.join(self._json_folder, JSON_FILE_NAME)
+
+        # Get a serializable version of the data
+        validator_data = {k: asdict(v) for k, v in self._validator_data.items()}
+
+        # Get the timestamp and add it to the json data
+        os.environ["TZ"] = LOCAL_TIMEZONE
+        time.tzset()
+        current_time = time.time()
+        timestamp = {
+            "display_time": time.ctime(current_time),
+            "actual_time": int(current_time),
+        }
+
+        # Set the dictionary to be written to the json file
+        json_data = {
+            "data": validator_data,
+            "timestamp": timestamp
+        }
+  
+        # First remove the existing json file
+        if os.path.isfile(json_file):
+            logger.info("Removing %s", json_file)
+            os.unlink(json_file)
+
+        # Then write the new data json file
+        logger.info("Writing data to file: %s", json_file)
+        with open(json_file, "w") as fd:
+            json.dump(json_data, fd, indent=4)
 
     def _print_validator_ranking(self):
 
@@ -271,9 +337,8 @@ class RankValidators:
             sort_attr = fields(validator_data)[self._sort - 1].name
             return getattr(validator_data, sort_attr)
 
-        print("")
         text = Text()
-        text.append("\n")
+        text.append("\n\n")
         text.append("S      -- Total number of subnets on which the validator is setting weights.\n")
         text.append("SE     -- Total number of subnets with emission on which the validator is setting weights.\n")
         text.append("vTW    -- Average vTrust weighted by subnet emission.\n")
@@ -341,7 +406,42 @@ class RankValidators:
 
 def main():
     args = parse_args()
-    RankValidators(args)
+
+    interval_seconds = round(args.interval * 60)
+
+    while True:
+        logger.info("Getting validator ranking.")
+        start_time = time.time()
+
+        args.network = get_lite_subtensor_network(args.local_subtensor)
+
+        try:
+            with multiprocessing.Pool(processes=1) as pool:
+                pool.apply(RankValidators, [args])
+        except SubtensorConnectionError:
+            if args.local_subtensor is None:
+                logger.info("Rotating subtensors and trying again.")
+                time.sleep(1)
+                continue
+
+        total_seconds = round(time.time() - start_time)
+        total_time_formatted = get_formatted_time(total_seconds)
+        logger.info("Validator rank data gathering took %s.\n", total_time_formatted)
+
+        # Only gather the data once.
+        if not interval_seconds:
+            break
+
+        wait_seconds = interval_seconds - total_seconds
+        if wait_seconds > 0:
+            wait_time_formatted = get_formatted_time(wait_seconds)
+            logger.info("Waiting %s.", wait_time_formatted)
+            time.sleep(wait_seconds)
+        else:
+            logger.warning(
+                "Processing took %i seconds which is longer than %i seconds. Not waiting.",
+                total_seconds, interval_seconds
+            )
 
 
 if __name__ == "__main__":
