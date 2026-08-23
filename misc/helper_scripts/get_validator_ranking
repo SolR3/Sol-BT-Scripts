@@ -44,6 +44,14 @@ def parse_args():
              "--top 50 shows only the top 50 validators.")
 
     parser.add_argument(
+            "--min-subnets",
+            type=int,
+            default=1,
+            help="Only display the validators validating on at least this number of "
+                 "subnets. The default value is 1, do each displayed validator must "
+                 "be validating on at least 1 subnet.")
+
+    parser.add_argument(
         "-l", "--local-subtensor",
         nargs="?",
         default=False,
@@ -64,17 +72,17 @@ class RankValidators:
         # Total number of subnets with emission on which the validator is setting weights.
         total_emitting_subnets: int = 0
 
-        # Total stake on subnets being validated on.
-        total_stake: float = 0.0
-
-        # Total stake on subnets being validated on weighted by emission.
-        total_emission_stake: float = 0.0
-
-        # Average vTrust weighted by emission.
+        # Average vTrust weighted by subnet emission.
         weighted_vtrust: float = 0.0
 
         # Total validator dividends per 100,000 stake.
         normalized_dividends: float = 0.0
+
+        # Total stake on subnets being validated on.
+        total_stake: float = 0.0
+
+        # Total stake on subnets being validated on weighted by subnet emission.
+        total_emission_stake: float = 0.0
 
         # Total validator emission per 100,000 stake.
         # I think this one isn't very accurate because it looks like the emission values
@@ -84,12 +92,14 @@ class RankValidators:
     def __init__(self, args):
         self._sort = args.sort
         self._top = args.top
+        self._min_subnets = args.min_subnets
         self._local_subtensor = args.local_subtensor
         self._run()
 
     def _run(self):
         asyncio.run(self._get_data_from_subtensor())
         self._get_validator_stats()
+        self._filter_not_validating()
         self._print_validator_ranking()
 
     async def _get_data_from_subtensor(self):
@@ -224,12 +234,12 @@ class RankValidators:
                 # Total stake on subnets being validated on.
                 validator_data.total_stake += validator.total_stake.alpha * alpha_price
 
-                # Total stake on subnets being validated on weighted by emission.
+                # Total stake on subnets being validated on weighted by subnet emission.
                 validator_data.total_emission_stake += (
                     validator.total_stake.alpha * alpha_price * subnet_emission
                 )
 
-                # Average vTrust weighted by emission.
+                # Average vTrust weighted by subnet emission.
                 validator_data.weighted_vtrust += vtrust[validator.uid] * subnet_emission
 
                 # Total validator dividends per 100,000 stake.
@@ -244,6 +254,12 @@ class RankValidators:
                 #     100000 * validator.emission.alpha / validator.total_stake.alpha * subnet_emission
                 # )
 
+    def _filter_not_validating(self):
+        for coldkey in list(self._validator_data):
+            validator_data = self._validator_data[coldkey]
+            if validator_data.total_subnets < self._min_subnets:
+                del self._validator_data[coldkey]
+
     def _print_validator_ranking(self):
 
         def get_sort_key(coldkey):
@@ -253,14 +269,25 @@ class RankValidators:
 
         print("")
         text = Text()
-        text.append("Total number of subnets on which the validator is setting weights.\n")
-        text.append("Total number of subnets with emission on which the validator is setting weights.\n")
-        text.append("Total stake on subnets being validated on.\n")
-        text.append("Total stake on subnets being validated on weighted by emission.\n")
-        text.append("Average vTrust weighted by emission.\n")
-        text.append("Total validator dividends per 100,000 stake.\n")
-        # text.append("Total validator emission per 100,000 stake.\n")
         text.append("\n")
+        text.append("S      -- Total number of subnets on which the validator is setting weights.\n")
+        text.append("SE     -- Total number of subnets with emission on which the validator is setting weights.\n")
+        text.append("vTW    -- Average vTrust weighted by subnet emission.\n")
+        text.append("DivW   -- Total validator dividends per 100,000 stake.\n")
+        text.append("Stake  -- Total stake on subnets being validated on.\n")
+        text.append("StakeE -- Total stake on subnets being validated on weighted by subnet emission.\n")
+        # text.append("Total validator emission per 100,000 stake.\n")
+        text.append("\n\n")
+
+        text.append("     ")
+        text.append("Name                 ")
+        text.append("S     ")
+        text.append("SE    ")
+        text.append("vTW     ")
+        text.append("DivW      ")
+        text.append("Stake    ")
+        text.append("StakeE")
+        text.append("\n-----------------------------------------------------------------------\n")
 
         num_total = self._top or len(self._validator_data)
 
@@ -278,12 +305,12 @@ class RankValidators:
             text.append(f"{name:<15}", style=color)
             text.append("  --  ")
             text.append(
-                f"{validator_data.total_subnets:<5}"
-                f"{validator_data.total_emitting_subnets:<5}"
-                f"{int(validator_data.total_stake):<8}"
-                f"{int(validator_data.total_emission_stake):<8}"
-                f"{validator_data.weighted_vtrust:<7.3f}"
-                f"{validator_data.normalized_dividends:9.5f}"
+                f"{validator_data.total_subnets:<6}"
+                f"{validator_data.total_emitting_subnets:<6}"
+                f"{validator_data.weighted_vtrust:<8.3f}"
+                f"{validator_data.normalized_dividends:<10.5f}"
+                f"{int(validator_data.total_stake):<9}"
+                f"{int(validator_data.total_emission_stake)}"
                 # f"{validator_data.normalized_emission:8.4f}"
                 "\n",
                 style=color
