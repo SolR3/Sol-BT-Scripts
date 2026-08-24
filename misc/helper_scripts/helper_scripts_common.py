@@ -7,6 +7,8 @@ import time
 
 LOCAL_TIMEZONE = "MST7MDT"
 
+TIMESTAMP_FILE_NAME = "timestamp.json"
+
 LEGIT_VALI_COLDKEYS = {
     "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo": "Rizzo",
     "5GW9X8GyXwA3VQbNhnzb6sJmfPvKBBJwx19hJrCseverjovV": "Rt21",

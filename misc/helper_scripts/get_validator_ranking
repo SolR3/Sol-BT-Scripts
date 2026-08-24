@@ -25,6 +25,7 @@ sys.path = [os.path.dirname(__file__)] + sys.path
 # Local imports
 from helper_scripts_common import (
     LOCAL_TIMEZONE,
+    TIMESTAMP_FILE_NAME,
     LEGIT_VALI_COLDKEYS,
     WEIGHT_COPIER_COLDKEYS,
     logger,
@@ -303,23 +304,8 @@ class RankValidators:
         json_file = os.path.join(self._json_folder, JSON_FILE_NAME)
 
         # Get a serializable version of the data
-        validator_data = {k: asdict(v) for k, v in self._validator_data.items()}
+        json_data = {k: asdict(v) for k, v in self._validator_data.items()}
 
-        # Get the timestamp and add it to the json data
-        os.environ["TZ"] = LOCAL_TIMEZONE
-        time.tzset()
-        current_time = time.time()
-        timestamp = {
-            "display_time": time.ctime(current_time),
-            "actual_time": int(current_time),
-        }
-
-        # Set the dictionary to be written to the json file
-        json_data = {
-            "data": validator_data,
-            "timestamp": timestamp
-        }
-  
         # First remove the existing json file
         if os.path.isfile(json_file):
             logger.info("Removing %s", json_file)
@@ -329,6 +315,33 @@ class RankValidators:
         logger.info("Writing data to file: %s", json_file)
         with open(json_file, "w") as fd:
             json.dump(json_data, fd, indent=4)
+
+        # Write the timestamp file
+        self._write_timestamp()
+
+    # TODO - This is ridiculous. The timestamp just needs to be in the validator_ranking.json file
+    def _write_timestamp(self):
+        timestamp_file = os.path.join(self._json_folder, TIMESTAMP_FILE_NAME)
+
+        os.environ["TZ"] = LOCAL_TIMEZONE
+        time.tzset()
+        current_time = time.time()
+
+        timestamp = {
+            "display_time": time.ctime(current_time),
+            "actual_time": int(current_time),
+        }
+
+        # First remove the existing timestamp file
+        if os.path.isfile(timestamp_file):
+            logger.info("Removing %s", timestamp_file)
+            os.unlink(timestamp_file)
+
+        # Then write the new timestamp file
+        logger.info("Writing timestamp file: %s", timestamp_file)
+        with open(timestamp_file, "w") as fd:
+            json.dump(timestamp, fd)
+
 
     def _print_validator_ranking(self):
 
