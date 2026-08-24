@@ -299,6 +299,8 @@ class RankValidators:
             validator_data = self._validator_data[coldkey]
             if validator_data.total_subnets < self._min_subnets:
                 del self._validator_data[coldkey]
+            validator_data.total_stake = int(validator_data.total_stake)
+            validator_data.total_emission_stake = int(validator_data.total_emission_stake)
 
     def _write_json_file(self):
         json_file = os.path.join(self._json_folder, JSON_FILE_NAME)
@@ -391,8 +393,8 @@ class RankValidators:
                 f"{validator_data.total_emitting_subnets:<6}"
                 f"{validator_data.weighted_vtrust:<8.3f}"
                 f"{validator_data.normalized_dividends:<10.5f}"
-                f"{int(validator_data.total_stake):<9}"
-                f"{int(validator_data.total_emission_stake)}"
+                f"{validator_data.total_stake:<9}"
+                f"{validator_data.total_emission_stake}"
                 # f"{validator_data.normalized_emission:8.4f}"
                 "\n",
                 style=color
