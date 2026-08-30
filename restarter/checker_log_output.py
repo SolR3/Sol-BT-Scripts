@@ -16,7 +16,7 @@ from .constants import (
     BLACKLIST_REGEXES,
     BLACKLIST_EXCLUDE_SEARCH_REGEXES,
     BLACKLIST_EXCLUDE_MATCH_REGEXES,
-    BLACKLIST_EXCLUDE_HOTKEY_REGEXES,
+    BLACKLIST_EXCLUDE_HOTKEY_REGEX,
 )
 from .utils import (
     get_pm2_log_output_wait_timer,
@@ -78,9 +78,7 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
         ]
 
         # Used for excluding blacklist patterns that list a key being blacklisted that is not ours.
-        self._blacklist_exclude_hotkey_regexes = [
-            re.compile(exclude_string) for exclude_string in BLACKLIST_EXCLUDE_HOTKEY_REGEXES
-        ]
+        self._blacklist_exclude_hotkey_regex = re.compile(BLACKLIST_EXCLUDE_HOTKEY_REGEX)
 
         self._blacklist_wait_time = 86400  # 1 day
         self._blacklist_notify_time = None
@@ -125,22 +123,31 @@ class ValidatorCheckerLogOutput(ValidatorCheckerLogOutputFactory):
                         )
                         return
 
-                for exclude_regex in self._blacklist_exclude_hotkey_regexes:
-                    key_match = exclude_regex.search(log_line)
-                    if key_match:
-                        key = key_match.group("key")
-                        if key not in (RIZZO_COLDKEY, RIZZO_HOTKEYS[self._netuid],):
-                            self.log_info(
-                                "Log line is blacklisting a hotkey that is not ours. "
-                                "Not sending a discord notification."
-                            )
-                            return
-                        break
-
                 self.log_info(
-                        "Log line does not match any blacklist exclude patterns. "
-                        "Sending a discord notification."
+                    "Log line does not match any blacklist exclude patterns. "
+                )
+
+                key_match = self._blacklist_exclude_hotkey_regex.search(log_line)
+                if key_match:
+                    key = key_match.group("key")
+                    if key in (RIZZO_COLDKEY, RIZZO_HOTKEYS[self._netuid],):
+                        self.log_info(
+                            f"Log line is blacklisting our hotkey/coldkey: {key} "
+                        )
+                    else:
+                        self.log_info(
+                            f"Log line is blacklisting a hotkey/coldkey ({key}) that is not ours. "
+                            "Not sending a discord notification."
+                        )
+                        return
+                else:
+                    self.log_info(
+                        "Log line is not blacklisting a hotkey/coldkey. "
+                        "Not sending a discord notification."
                     )
+                    return
+
+                self.log_info("Sending a discord notification.")
                 send_monitor_notification(
                     self.log_prefix,
                     f"{RED_EP} We're being blacklisted on subnet {self._netuid}"
