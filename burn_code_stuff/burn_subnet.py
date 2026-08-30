@@ -604,8 +604,17 @@ class BurnValidator:
             self.rotate_local_subtensor()
 
             args = []
-            with multiprocessing.Pool(processes=1) as pool:
-                pool.apply(self.run_in_subprocess, args)
+            try:
+                with multiprocessing.Pool(processes=1) as pool:
+                    pool.apply(self.run_in_subprocess, args)
+            except Exception as err:
+                logger.error("")
+                logger.error("Subtensor connection failed on '%s'", self.config.subtensor_network)
+                logger.error("%s: %s", type(err).__name__, err)
+                logger.error("")
+                logger.error("Rotating subtensors and trying again.")
+                time.sleep(1)
+                continue
 
             # Wait for next time to set weights.
             wait_blocks = mp_queue.get()
