@@ -6,6 +6,10 @@ import time
 
 # Local imports
 from .checker_base import ValidatorChecker
+from .utils import (
+    restart_wait_timers,
+    WaitTimer,
+)
 
 
 class ValidatorCheckerDockerStoppedLogs(ValidatorChecker):
@@ -87,18 +91,44 @@ class ValidatorCheckerDockerStoppedLogs(ValidatorChecker):
 class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
     log_prefix = "CHECK PM2 LOGS STOPPED"
 
+    # Inline wait timer class
+    class StoppedLogsWaitTimer(WaitTimer):
+
+        def _log_wait_timer_started(self):
+            ValidatorCheckerPm2StoppedLogs.log_info(
+                f"Stopping pm2 stopped logs check. Waiting {self._wait_time} "
+                "seconds after restart to continue checking for stopped logs."
+            )
+
+        def _log_wait_timer_finished(self):
+            ValidatorCheckerPm2StoppedLogs.log_info(
+                "Continuing pm2 stopped logs check."
+            )
+
     def _init_setup(self, options):
         self._pm2_process = options.pm2_process
         self._restart_threshold = int(round(options.stopped_logs_threshold * 60))
+        self._restart_wait_time = options.stopped_logs_restart_wait_time * 60
 
     def _run(self):
         self.log_info("")
         self.log_info(f"Checking for stopped logs for process: {self._pm2_process}.")
         self.log_info("")
 
+        self._set_wait_timer(self._restart_wait_time)
+
         while True:
             out_log_file = None
             error_log_file = None
+
+            wait_time = int(self._get_wait_timer().get_waiting_status())
+            if wait_time:
+                self.log_debug(
+                    f"({self._pm2_process}) Not checking for stopped logs. "
+                    f"In waiting mode. Waiting {wait_time} seconds."
+                )
+                time.sleep(wait_time)
+                continue
 
             process = subprocess.run(["pm2", "jlist"], stdout=subprocess.PIPE)
             pm2_output = json.loads(process.stdout)
@@ -151,3 +181,13 @@ class ValidatorCheckerPm2StoppedLogs(ValidatorChecker):
                               else self._restart_threshold)
             self.log_info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
+
+    @classmethod
+    def _set_wait_timer(cls, wait_time):
+        if not restart_wait_timers.get_wait_timer(cls):
+            restart_wait_timer = cls.StoppedLogsWaitTimer(wait_time)
+            restart_wait_timers.set_wait_timer(cls, restart_wait_timer)
+
+    @classmethod
+    def _get_wait_timer(cls):
+        return restart_wait_timers.get_wait_timer(cls)

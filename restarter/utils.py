@@ -17,17 +17,59 @@ from .constants import (
 )
 
 
-_pm2_log_output_wait_timer = None
+class WaitTimer:
+    def __init__(self, wait_time):
+        self._timer_lock = threading.Lock()
+        self._wait_timer = None
+        self._wait_event = threading.Event()
+        self._wait_time = wait_time
+        self._start_time = 0
+
+    def get_waiting_status(self):
+        if self._wait_event.is_set():
+            return max(0, self._wait_time - (time.monotonic() - self._start_time))
+        return 0
+
+    def start_wait_timer(self):
+        with self._timer_lock:
+            self._start_time = time.monotonic()
+            self._wait_event.set()
+            if self._wait_timer:
+                self._wait_timer.cancel()
+            self._wait_timer = threading.Timer(
+                interval=self._wait_time, function=self._unset_wait_event
+            )
+            self._wait_timer.start()
+            self._log_wait_timer_started()
+
+    def _unset_wait_event(self):
+        with self._timer_lock:
+            self._wait_event.clear()
+            self._log_wait_timer_finished()
+
+    def _log_wait_timer_started(self):
+        raise NotImplementedError
+
+    def _log_wait_timer_finished(self):
+            raise NotImplementedError
+
+
+class _RestartWaitTimers:
+    def __init__(self):
+        self._wait_timers = {}
+
+    def get_wait_timers(self):
+        return self._wait_timers.values()
+
+    def get_wait_timer(self, checker_cls):
+        return self._wait_timers.get(checker_cls)
+
+    def set_wait_timer(self, checker_cls, wait_timer):
+        self._wait_timers[checker_cls] = wait_timer
+
+
+restart_wait_timers = _RestartWaitTimers()
 restart_lock = threading.Lock()
-
-
-def get_pm2_log_output_wait_timer():
-    return _pm2_log_output_wait_timer
-
-
-def set_pm2_log_output_wait_timer(pm2_log_output_wait_timer):
-    global _pm2_log_output_wait_timer
-    _pm2_log_output_wait_timer = pm2_log_output_wait_timer
 
 
 def send_monitor_notification(log_prefix, message, git_update_notify=False):

@@ -6,9 +6,9 @@ import tempfile
 # Local imports
 from .constants import RED_QM
 from .utils import (
-    get_pm2_log_output_wait_timer,
     logger,
     restart_lock,
+    restart_wait_timers,
     send_monitor_notification,
 )
 
@@ -71,9 +71,8 @@ class ValidatorChecker:
             return
 
         with restart_lock:
-            pm2_log_output_wait_timer = get_pm2_log_output_wait_timer()
-            if pm2_log_output_wait_timer:
-                pm2_log_output_wait_timer.start_wait_timer()
+            for restart_wait_timer in restart_wait_timers.get_wait_timers():
+                restart_wait_timer.start_wait_timer()
             self._do_restart(description, force_notify, git_update_notify)
 
     def _do_restart(self, description, force_notify, git_update_notify):

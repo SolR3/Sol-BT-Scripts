@@ -3,7 +3,6 @@ import os
 import pty
 import re
 import subprocess
-import threading
 import time
 
 
@@ -19,9 +18,9 @@ from .constants import (
     BLACKLIST_EXCLUDE_HOTKEY_REGEX,
 )
 from .utils import (
-    get_pm2_log_output_wait_timer,
-    set_pm2_log_output_wait_timer,
+    restart_wait_timers,
     send_monitor_notification,
+    WaitTimer,
 )
 
 
@@ -243,36 +242,18 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
     _skip_initial_log_lines = 40
 
     # Inline wait timer class
-    class ErrorLogsWaitTimer:
-        def __init__(self, wait_time):
-            self._timer_lock = threading.Lock()
-            self._wait_timer = None
-            self._wait_event = threading.Event()
-            self._wait_time = wait_time
+    class LogPatternsWaitTimer(WaitTimer):
 
-        def get_waiting_status(self):
-            return self._wait_event.is_set()
+        def _log_wait_timer_started(self):
+            ValidatorCheckerPm2LogOutput.log_info(
+                f"Stopping pm2 log patterns check. Waiting {self._wait_time} "
+                "seconds after restart to continue checking log patterns."
+            )
 
-        def start_wait_timer(self):
-            with self._timer_lock:
-                self._wait_event.set()
-                if self._wait_timer:
-                    self._wait_timer.cancel()
-                self._wait_timer = threading.Timer(
-                    interval=self._wait_time, function=self._unset_wait_event
-                )
-                self._wait_timer.start()
-                ValidatorCheckerPm2LogOutput.log_info(
-                    f"Stopping pm2 log patterns check. Waiting {self._wait_time} "
-                    "seconds after restart to continue checking log patterns."
-                )
-
-        def _unset_wait_event(self):
-            with self._timer_lock:
-                self._wait_event.clear()
-                ValidatorCheckerPm2LogOutput.log_info(
-                    "Continuing pm2 log patterns check."
-                )
+        def _log_wait_timer_finished(self):
+            ValidatorCheckerPm2LogOutput.log_info(
+                "Continuing pm2 log patterns check."
+            )
 
     def _init_setup(self, options):
         super()._init_setup(options, options.pm2_process)
@@ -296,7 +277,7 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
         if self._do_check_blacklist:
             self.log_info("Checking for miner blacklisting.")
 
-        self._create_pm2_log_output_wait_timer(self._restart_wait_time)
+        self._set_wait_timer(self._restart_wait_time)
 
         log_regexes = []
         for log_pattern in self._generic_patterns + self._subnet_patterns:
@@ -337,10 +318,11 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
                         _initial_log_lines += 1
                         self.log_info("Starting log patterns check.")
 
-                    if get_pm2_log_output_wait_timer().get_waiting_status():
+                    wait_time = int(self._get_wait_timer().get_waiting_status())
+                    if wait_time:
                         self.log_debug(
                             f"({self._pm2_process}) Log line skipped. "
-                            "In waiting mode."
+                            f"In waiting mode. {wait_time} seconds left."
                         )
                         continue
 
@@ -365,12 +347,14 @@ class ValidatorCheckerPm2LogOutput(ValidatorCheckerLogOutput):
             time.sleep(sleep_time)
 
     @classmethod
-    def _create_pm2_log_output_wait_timer(cls, wait_time):
-        if not get_pm2_log_output_wait_timer():
-            pm2_log_output_wait_timer = (
-                cls.ErrorLogsWaitTimer(wait_time)
-            )
-            set_pm2_log_output_wait_timer(pm2_log_output_wait_timer)
+    def _set_wait_timer(cls, wait_time):
+        if not restart_wait_timers.get_wait_timer(cls):
+            restart_wait_timer = cls.LogPatternsWaitTimer(wait_time)
+            restart_wait_timers.set_wait_timer(cls, restart_wait_timer)
+
+    @classmethod
+    def _get_wait_timer(cls):
+        return restart_wait_timers.get_wait_timer(cls)
 
 
 class ValidatorCheckerDockerLogOutputSn52(ValidatorCheckerDockerLogOutput):

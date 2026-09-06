@@ -8,6 +8,7 @@ from .constants import (
     DEFAULT_MEM_THRESHOLD,
     DEFAULT_STOPPED_LOGS_THRESHOLD,
     DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME,
+    DEFAULT_STOPPED_LOGS_RESTART_WAIT_TIME,
     )
 
 
@@ -105,11 +106,21 @@ def parse_args():
         "--log-errors-restart-wait-time",
         type=float,
         default=DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME,
-        help="The number of minutes to wait after restarting a the validator "
-             "due to a pm2 log patterns error so it doesn't get restarted multiple "
-             "times due to duplicate or quickly recurring error patterns. NOTE: "
-             "this only applies to pm2 logs. Docker logs are unaffected by this."
-             f"Default: {DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME}")
+        help="The number of minutes to wait after restarting the validator before the "
+             "pm2 log patterns checks restart. This exists so the validator doesn't "
+             "get restarted multiple times due to duplicate or quickly recurring "
+             "error patterns. NOTE: This only applies to pm2 logs. Docker logs are "
+             f"unaffected by this. Default: {DEFAULT_LOG_ERRORS_RESTART_WAIT_TIME}")
+
+    parser.add_argument(
+        "--stopped-logs-restart-wait-time",
+        type=float,
+        default=DEFAULT_STOPPED_LOGS_RESTART_WAIT_TIME,
+        help="The number of minutes to wait after restarting the validator before the "
+             "pm2 stopped logs checks restart. This exists so the stopped logs check "
+             "doesn't fail right after a restart due to the pm2 process temporarily "
+             "not existing. NOTE: This only applies to pm2 logs. Docker logs are "
+            f"unaffected by this. Default: {DEFAULT_STOPPED_LOGS_RESTART_WAIT_TIME}")
 
     parser.add_argument(
         "--code-repo-path",
