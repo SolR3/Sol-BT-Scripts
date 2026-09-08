@@ -13,10 +13,8 @@ import time
 sys.path = [os.path.dirname(__file__)] + sys.path
 
 from subtensor_constants import (
-    LOCAL_TIMEZONE,
     JSON_FILE_NAME,
     FINNEY_BLOCK_FILE_NAME,
-    TIMESTAMP_FILE_NAME,
     LOCAL_SUBTENSORS,
 )
 from subtensor_utils import (
@@ -72,36 +70,6 @@ def _parse_args():
     return parser.parse_args()
 
 
-# TODO - This is ridiculous. The timestamp just needs to be in the subtensor_status.json file
-def write_timestamp(json_folder):
-    timestamp_file = os.path.join(json_folder, TIMESTAMP_FILE_NAME)
-
-    os.environ["TZ"] = LOCAL_TIMEZONE
-    time.tzset()
-
-    data_file = os.path.join(json_folder, JSON_FILE_NAME)
-    if os.path.isfile(data_file):
-        file_time = os.path.getmtime(data_file)
-    else:
-        logger.error("Can't get timestamp. Json file does not exist: %s", data_file)
-        file_time = 0
-
-    timestamp = {
-        "display_time": time.ctime(file_time),
-        "actual_time": int(file_time),
-    }
-
-    # First remove the existing timestamp file
-    if os.path.isfile(timestamp_file):
-        logger.info("Removing %s", timestamp_file)
-        os.unlink(timestamp_file)
-
-    # Then write the new timestamp file
-    logger.info("Writing timestamp file: %s", timestamp_file)
-    with open(timestamp_file, "w") as fd:
-        json.dump(timestamp, fd)
-
-
 def write_json_file(subtensor_data, json_folder):
     json_file = os.path.join(json_folder, JSON_FILE_NAME)
 
@@ -109,6 +77,12 @@ def write_json_file(subtensor_data, json_folder):
     subtensor_json_data = []
     for subtensor in subtensor_data:
         subtensor_json_data.append(asdict(subtensor))
+
+    timestamp = int(time.time())
+    json_contents = {
+        "data": subtensor_json_data,
+        "timestamp": timestamp,
+    }
 
     # First remove the existing json file
     if os.path.isfile(json_file):
@@ -118,10 +92,7 @@ def write_json_file(subtensor_data, json_folder):
     # Then write the new data json file
     logger.info("\nWriting data to file: %s", json_file)
     with open(json_file, "w") as fd:
-        json.dump(subtensor_json_data, fd, indent=4)
-
-    # Write the timestamp file
-    write_timestamp(json_folder)
+        json.dump(json_contents, fd, indent=4)
 
 
 def print_subtensor_statuses(subtensor_data):

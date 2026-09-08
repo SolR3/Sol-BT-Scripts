@@ -24,8 +24,6 @@ sys.path = [os.path.dirname(__file__)] + sys.path
 
 # Local imports
 from helper_scripts_common import (
-    LOCAL_TIMEZONE,
-    TIMESTAMP_FILE_NAME,
     LEGIT_VALI_COLDKEYS,
     WEIGHT_COPIER_COLDKEYS,
     logger,
@@ -307,6 +305,11 @@ class RankValidators:
 
         # Get a serializable version of the data
         json_data = {k: asdict(v) for k, v in self._validator_data.items()}
+        timestamp = int(time.time())
+        json_contents = {
+            "data": json_data,
+            "timestamp": timestamp,
+        }
 
         # First remove the existing json file
         if os.path.isfile(json_file):
@@ -316,34 +319,7 @@ class RankValidators:
         # Then write the new data json file
         logger.info("Writing data to file: %s", json_file)
         with open(json_file, "w") as fd:
-            json.dump(json_data, fd, indent=4)
-
-        # Write the timestamp file
-        self._write_timestamp()
-
-    # TODO - This is ridiculous. The timestamp just needs to be in the validator_ranking.json file
-    def _write_timestamp(self):
-        timestamp_file = os.path.join(self._json_folder, TIMESTAMP_FILE_NAME)
-
-        os.environ["TZ"] = LOCAL_TIMEZONE
-        time.tzset()
-        current_time = time.time()
-
-        timestamp = {
-            "display_time": time.ctime(current_time),
-            "actual_time": int(current_time),
-        }
-
-        # First remove the existing timestamp file
-        if os.path.isfile(timestamp_file):
-            logger.info("Removing %s", timestamp_file)
-            os.unlink(timestamp_file)
-
-        # Then write the new timestamp file
-        logger.info("Writing timestamp file: %s", timestamp_file)
-        with open(timestamp_file, "w") as fd:
-            json.dump(timestamp, fd)
-
+            json.dump(json_contents, fd, indent=4)
 
     def _print_validator_ranking(self):
 

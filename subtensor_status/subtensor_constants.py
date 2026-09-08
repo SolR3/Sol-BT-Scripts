@@ -1,8 +1,5 @@
-LOCAL_TIMEZONE = "MST7MDT"
-
 JSON_FILE_NAME = "subtensor_status.json"
 FINNEY_BLOCK_FILE_NAME = "finney_block.json"
-TIMESTAMP_FILE_NAME = "timestamp.json"
 
 LOCAL_SUBTENSORS = [
     "ws://subtensor-cali.rizzo.network:9944",
