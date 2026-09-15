@@ -35,6 +35,14 @@ def _parse_args():
         help="The json folder on the jerky (2292) VM to transfer the finney block json file."
     )
 
+    parser.add_argument(
+        "-i", "--interval",
+        type=float,
+        default=0,
+        help="The number of minutes between finney block gathering. If 0 or not "
+             "specified then the finney block is gathered only once."
+    )
+
     return parser.parse_args()
 
 
@@ -88,31 +96,49 @@ def transfer_to_jerky(source_file, dest_folder):
 
 
 def main(options):
-    logger.info("Getting finney block.")
+    interval_seconds = round(options.interval * 60)
 
-    start_time = time.time()
+    while True:
+        logger.info("Getting finney block.")
 
-    result = get_finney_block()
-    finney_block_time = int(time.time())
-    try:
-        finney_block = int(result)
-    except ValueError:
-        finney_block = None
-        logger.error("Failed to get finney block.")
-        logger.error(result)
+        start_time = time.time()
 
-    finney_block_data = FinneyBlockData(
-        block=finney_block,
-        time=finney_block_time,
-    )
+        result = get_finney_block()
+        finney_block_time = int(time.time())
+        try:
+            finney_block = int(result)
+        except ValueError:
+            finney_block = None
+            logger.error("Failed to get finney block.")
+            logger.error(result)
 
-    total_seconds = round(time.time() - start_time)
-    total_time_formatted = format_time(total_seconds)
-    logger.info("Finney block gathering took %s.\n", total_time_formatted)
+        finney_block_data = FinneyBlockData(
+            block=finney_block,
+            time=finney_block_time,
+        )
 
-    json_file = write_finney_block_file(finney_block_data, options.json_folder)
-    if options.transfer_to_jerky:
-        transfer_to_jerky(json_file, options.transfer_to_jerky)
+        total_seconds = round(time.time() - start_time)
+        total_time_formatted = format_time(total_seconds)
+        logger.info("Finney block gathering took %s.\n", total_time_formatted)
+
+        json_file = write_finney_block_file(finney_block_data, options.json_folder)
+        if options.transfer_to_jerky:
+            transfer_to_jerky(json_file, options.transfer_to_jerky)
+
+        # Only gather the data once.
+        if not interval_seconds:
+            break
+
+        wait_seconds = interval_seconds - total_seconds
+        if wait_seconds > 0:
+            wait_time_formatted = format_time(wait_seconds)
+            logger.info("Waiting %s.", wait_time_formatted)
+            time.sleep(wait_seconds)
+        else:
+            logger.warning(
+                "Processing took %i seconds which is longer than %i seconds. Not waiting.",
+                total_seconds, interval_seconds
+            )
 
 
 if __name__ == "__main__":
