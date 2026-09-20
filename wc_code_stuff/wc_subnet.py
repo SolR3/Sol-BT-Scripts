@@ -1,7 +1,6 @@
 # Standard imports
 import argparse
 import logging
-import multiprocessing
 import random
 import sys
 import time
@@ -43,10 +42,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-
-
-# Create Mulitprocessing queue
-mp_queue = multiprocessing.Queue()
 
 
 class WCValidator:
@@ -335,10 +330,6 @@ class WCValidator:
             else:
                 return self.get_blocks_until_next_epoch(subtensor)
 
-    def run_in_subprocess(self):
-        wait_blocks = self.run_wc_code()
-        mp_queue.put(wait_blocks)
-
     def run(self):
         logger.info("Running validator for subnet %s...", self.config.netuid)
 
@@ -346,10 +337,8 @@ class WCValidator:
             logger.info("Running validator loop...")
             self.rotate_local_subtensor()
 
-            args = []
             try:
-                with multiprocessing.Pool(processes=1) as pool:
-                    pool.apply(self.run_in_subprocess, args)
+                wait_blocks = self.run_wc_code()
             except Exception as err:
                 logger.error("")
                 logger.error("Subtensor connection failed on '%s'", self.config.subtensor_network)
@@ -360,7 +349,6 @@ class WCValidator:
                 continue
 
             # Wait for next time to set weights.
-            wait_blocks = mp_queue.get()
             logger.info(
                 "Waiting %s blocks before next weight set...", wait_blocks
             )
