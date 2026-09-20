@@ -8,7 +8,7 @@ import time
 
 # Local imports
 from .checker_base import ValidatorChecker
-from .constants import RED_X
+from .constants import RED_QM, RED_X
 from .utils import send_monitor_notification
 
 
@@ -18,6 +18,7 @@ class GitUpdateError(Exception):
 
 class ValidatorCheckerGitUpdateBase(ValidatorChecker):
     log_prefix = "CHECK CODE UPDATE"
+    _unmerged_status_codes = ("UU", "AA", "DD", "AU", "UA", "UD", "DU")
 
     def _init_setup(self, options):
         if options.code_repo_path:
@@ -160,6 +161,73 @@ class ValidatorCheckerGitUpdateBase(ValidatorChecker):
             self.log_info(f"Sleeping for {sleep_interval} seconds.")
             time.sleep(sleep_interval)
 
+    def _check_for_autostash_conflict(self, git_command, fail_on_no_conflict=False):
+        """
+        Check if there are any conflicts when unstashing a local change after a git update.
+        If so then attempt to recover from those conflicts.
+
+        Local working-tree edits here are always an uncommitted,
+        idempotently-reapplied patch (e.g. rsn71.sh's env-var patch), never
+        real work in progress, so it's safe to discard them and reset to
+        the newly-pulled HEAD. Returns True if recovery was attempted.
+        """
+        status_cmd = f"{git_command} status --porcelain"
+        try:
+            process = subprocess.run(shlex.split(status_cmd), check=True, stdout=subprocess.PIPE)
+        except subprocess.CalledProcessError as exc:
+            self.log_error(f"'{status_cmd}' command failed with error: {exc}")
+            return False
+
+        conflicted = [
+            line[3:] for line in process.stdout.decode().splitlines()
+            if line[:2] in self._unmerged_status_codes
+        ]
+        if not conflicted:
+            if fail_on_no_conflict:
+                self.log_error("Could not find conflicting git paths.")
+                return False
+            else:
+                return True
+
+        self.log_info(
+            "Detected unmerged paths after git update (likely an attempt to re-apply "
+            f"a conflicting stash): {conflicted}. Resetting to HEAD to recover."
+        )
+
+        reset_cmd = f"{git_command} reset --hard HEAD"
+        try:
+            subprocess.run(shlex.split(reset_cmd), check=True)
+        except subprocess.CalledProcessError as exc:
+            self.log_error(f"'{reset_cmd}' recovery command failed with error: {exc}")
+            return False
+
+        # Commenting for now in case we need to examine the stashed change that failed to be re-applied.
+        # stash_list_cmd = f"{git_command} stash list"
+        # try:
+        #     process = subprocess.run(shlex.split(stash_list_cmd), check=True, stdout=subprocess.PIPE)
+        # except subprocess.CalledProcessError as exc:
+        #     self.log_warning(f"'{stash_list_cmd}' command failed with error: {exc}")
+        # else:
+        #     for line in process.stdout.decode().splitlines():
+        #         stash_ref, _, stash_desc = line.partition(":")
+        #         if (
+        #             stash_desc.strip() == "autostash"  # when pulling commits
+        #             or stash_desc.partition(":")[2].strip() == "autostash"  # when checking out tags
+        #         ):
+        #             try:
+        #                 drop_cmd = f"{git_command} stash drop {stash_ref}"
+        #                 subprocess.run(shlex.split(drop_cmd), check=True)
+        #             except subprocess.CalledProcessError as exc:
+        #                 self.log_warning(f"'{drop_cmd}' command failed with error: {exc}")
+
+        self.log_info("Successfully recovered git repo.")
+        send_monitor_notification(
+            self.log_prefix,
+            f"{RED_QM} Auto-recovered from a conflicting git stash re-apply on subnet {self._netuid} "
+            f"(reset {conflicted} to HEAD)."
+        )
+        return True
+
     def _check_code_repo(self, *args, **kwargs):
         raise NotImplementedError
 
@@ -185,7 +253,22 @@ class ValidatorCheckerGitUpdateCommits(ValidatorCheckerGitUpdateBase):
             subprocess.run(shlex.split(pull_cmd), check=True)
         except subprocess.CalledProcessError as exc:
             self.log_error(f"'{pull_cmd}' command failed with error: {exc}")
-            raise GitUpdateError
+            if not self._check_for_autostash_conflict(git_command, fail_on_no_conflict=True):
+                self.log_error("Unable to recover git repo.")
+                raise GitUpdateError
+
+            # Not sure if we really need this but doesn't hurt
+            # and would be bad to remove it if it were needed.
+            try:
+                subprocess.run(shlex.split(pull_cmd), check=True)
+            except subprocess.CalledProcessError as exc:
+                self.log_error(f"'{pull_cmd}' command failed again after recovery: {exc}")
+                raise GitUpdateError
+
+        else:
+            if not self._check_for_autostash_conflict(git_command):
+                self.log_error("Unable to recover git repo.")
+                raise GitUpdateError
 
         try:
             process = subprocess.run(shlex.split(get_cmd), check=True, stdout=subprocess.PIPE)
@@ -215,7 +298,7 @@ class ValidatorCheckerGitUpdateTags(ValidatorCheckerGitUpdateBase):
         latest_cmd = f"{git_command} rev-list --tags --max-count=1"
         pull_cmd = f"{git_command} checkout"
         stash_check_cmd = f"{git_command} status --porcelain --untracked-files=no"
-        stash_push_cmd = f"{git_command} stash push"
+        stash_push_cmd = f"{git_command} stash push -m 'autostash'"
         stash_pop_cmd = f"{git_command} stash pop"
 
         try:
@@ -303,7 +386,13 @@ class ValidatorCheckerGitUpdateTags(ValidatorCheckerGitUpdateBase):
                 subprocess.run(shlex.split(stash_pop_cmd), check=True)
             except subprocess.CalledProcessError as exc:
                 self.log_error(f"'{stash_pop_cmd}' command failed with error: {exc}")
-                raise GitUpdateError
+                if not self._check_for_autostash_conflict(git_command, fail_on_no_conflict=True):
+                    self.log_error("Unable to recover git repo.")
+                    raise GitUpdateError
+            else:
+                if not self._check_for_autostash_conflict(git_command):
+                    self.log_error("Unable to recover git repo.")
+                    raise GitUpdateError
 
         self.log_info("Pulled latest tag.")
         return True
