@@ -40,8 +40,9 @@ def main(options):
         "~/.bittensor/burn_subnets_data/burn_subnets_data.json"
     )
     with open(data_file, "r") as fp:
-        burn_subnets = json.load(fp)
+        burn_subnets_data = json.load(fp)
 
+    burn_subnets = burn_subnets_data["data"]
     num_burn_subnets = len(burn_subnets)
     wait_seconds = options.interval * 12
     for i, burn_subnet in enumerate(burn_subnets):
