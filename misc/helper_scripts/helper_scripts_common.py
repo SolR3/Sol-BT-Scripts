@@ -8,7 +8,7 @@ import time
 LEGIT_VALI_COLDKEYS = {
     "5FuzgvtfbZWdKSRxyYVPAPYNaNnf9cMnpT7phL3s2T3Kkrzo": "Rizzo",
     "5GW9X8GyXwA3VQbNhnzb6sJmfPvKBBJwx19hJrCseverjovV": "Rt21",
-    "5EBuUXD6eXSSWVaT1NqaUQoAACUkAmEogzAfPQvDXTEQZ8Ff": "OTF",
+    "5GaET4LPiVs8LhWFSCsfmAGfFnqeaACb3zFoZbfVUKz3XTPo": "Summer",
     "5E9fVY1jexCNVMjd2rdBsAxeamFGEMfzHcyTn2fHgdHeYc5p": "Yuma",
     "5FHxxe8ZKYaNmGcSLdG5ekxXeZDhQnk9cbpHdsJW8RunGpSs": "Kraken",
     "5DXiV1gqHRQKop5RZA5ywvcZ9bW1p7CmwuSAT8R6143jXUWg": "TAO.com",
@@ -27,6 +27,7 @@ WEIGHT_COPIER_COLDKEYS = {
     "5EnXts8HKLv1o3qhFBGPaoZt1CjMd2g4RtKDpnp3A44xFCGK": "Weight Copier",  # 5FLoWC...SeRv8m
     "5CqsgERpW6dJn4AtTkfckcUd7Ab6JNVa2Hb2MhyjApYVXMUV": "MUV",
     "5DywxdtESjskgPZrDXL86qV44SpPgJuqs9X6noyJJwX9PaSD": "General Tensor",
+    "5EBuUXD6eXSSWVaT1NqaUQoAACUkAmEogzAfPQvDXTEQZ8Ff": "OTF",
 }
 
 
