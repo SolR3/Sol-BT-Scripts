@@ -132,16 +132,22 @@ class GetValidatorWeights:
             coldkey = validator.coldkey
             hotkey = validator.hotkey
 
-            name = None
+            # TODO - All of this needs to be cleaned up.
+            # Create a helper function that this and get_validator_ranking can both use
+            name = (validator.identity or {}).get("name") or None
+            color = "default"
             if coldkey in owner_coldkeys:
-                name = "Owner"
-                color = 14
+                name = f"Owner - {name}" if name else "Owner"
+                color = "bright_cyan"
             elif coldkey in LEGIT_VALI_COLDKEYS:
-                name = LEGIT_VALI_COLDKEYS[coldkey]
-                color = 10 if name == "Rizzo" else 12
+                name = name or LEGIT_VALI_COLDKEYS[coldkey]
+                color = (
+                    "bright_green" if LEGIT_VALI_COLDKEYS[coldkey] == "Rizzo"
+                    else "bright_blue"
+                )
             elif coldkey in WEIGHT_COPIER_COLDKEYS:
-                name = WEIGHT_COPIER_COLDKEYS[coldkey]
-                color = 9
+                name = name or WEIGHT_COPIER_COLDKEYS[coldkey]
+                color = "bright_red"
 
             vtrust =  self._get_vtrust(uid)
             updated = self._get_updated(uid)
@@ -149,7 +155,7 @@ class GetValidatorWeights:
             num_weights = len(weights)
 
             if name:
-                text.append(f"{name}:\n", style=f"color({color})")
+                text.append(f"{name}:\n", style=color)
             key = coldkey if self._print_coldkeys else hotkey
             text.append(f"{uid} - {key} (Weights: {num_weights}  vT: {vtrust:.3f}  U: {updated})\n")
             if self._verbose:

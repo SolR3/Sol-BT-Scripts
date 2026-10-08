@@ -9,6 +9,7 @@ import argparse
 import asyncio
 from dataclasses import dataclass, fields, asdict
 import json
+import math
 import multiprocessing
 import os
 from rich.text import Text
@@ -69,7 +70,8 @@ def parse_args():
         choices=list(range(1, len(fields(RankValidators.ValidatorData)) + 1)),
         default=1,
         help="The criteria by which to rank the validator. The choices are the column "
-             "numbers of the printout. The default is the first column."
+             "numbers of the printout where the S column is the first column. The default "
+             "is the first column."
     )
 
     parser.add_argument(
@@ -94,6 +96,17 @@ class RankValidators:
 
     @dataclass
     class ValidatorData:
+        # Validator name
+        validator_name: str
+
+        # The type of validator.
+        # This isn't an enum because it's stored and read by the ValidatorStatus page
+        # 0 - Unknown
+        # 1 - Rizzo validator
+        # 2 - Legitimate validator
+        # 3 - Weight Copier
+        validator_type: int
+
         # Total number of subnets on which the validator is setting weights.
         total_subnets: int = 0
 
@@ -120,7 +133,7 @@ class RankValidators:
     def __init__(self, args):
         self._min_subnets = args.min_subnets
         self._json_folder = args.json_folder
-        self._sort = args.sort
+        self._sort = args.sort + 2
         self._top = args.top
         self._network = args.network
         self._run()
@@ -245,9 +258,14 @@ class RankValidators:
             alpha_price = metagraph.price
 
             for validator in metagraph.validators:
-                validator_data = self._validator_data.setdefault(
-                    validator.coldkey, self.ValidatorData()
-                )
+                coldkey = validator.coldkey
+                if coldkey not in self._validator_data:
+                    vali_name, vali_type = self._get_vali_name_and_type(validator)
+                    self._validator_data[coldkey] = self.ValidatorData(
+                        validator_name=vali_name,
+                        validator_type=vali_type,
+                    )
+                validator_data = self._validator_data[coldkey]
 
                 # Some owner neurons have a validator permit but no stake.
                 if not validator.total_stake.alpha:
@@ -322,11 +340,9 @@ class RankValidators:
             json.dump(json_contents, fd, indent=4)
 
     def _print_validator_ranking(self):
-
-        def get_sort_key(coldkey):
-            validator_data = self._validator_data[coldkey]
-            sort_attr = fields(validator_data)[self._sort - 1].name
-            return getattr(validator_data, sort_attr)
+        num_total = self._top or len(self._validator_data)
+        rank_padding = int(math.log(num_total, 10)) + 1
+        name_padding = self._get_vali_name_length()
 
         text = Text()
         text.append("\n\n")
@@ -339,30 +355,34 @@ class RankValidators:
         # text.append("Total validator emission per 100,000 stake weighted by subnet emission.\n")
         text.append("\n\n")
 
-        text.append("     ")
-        text.append("Name                 ")
+        text.append(" " * (rank_padding + 3))
+        text.append("Name" + " " * (name_padding + 2))
         text.append("S     ")
         text.append("SE    ")
         text.append("vTW     ")
         text.append("DivW      ")
         text.append("Stake    ")
         text.append("StakeE")
-        text.append("\n-----------------------------------------------------------------------\n")
-
-        num_total = self._top or len(self._validator_data)
+        text.append("\n" + "-" * (rank_padding + name_padding + 54) + "\n")
 
         for rank, coldkey in enumerate(reversed(sorted(
-            self._validator_data, key=get_sort_key
+            self._validator_data, key=self._get_sort_key
         )), 1):
 
             if rank > num_total:
                 break
 
-            name, color = self._get_vali_name_and_color(coldkey)
             validator_data = self._validator_data[coldkey]
+            name = validator_data.validator_name
+            color = {
+                0: "default",
+                1: "bright_green",
+                2: "bright_blue",
+                3: "bright_red",
+            }.get(validator_data.validator_type)
 
-            text.append(f"{rank:<2} - ")
-            text.append(f"{name:<15}", style=color)
+            text.append(f"{rank:<{rank_padding}} - ")
+            text.append(f"{name:<{name_padding}}", style=color)
             text.append("  --  ")
             text.append(
                 f"{validator_data.total_subnets:<6}"
@@ -378,21 +398,47 @@ class RankValidators:
 
         Console().print(text)
 
+    def _get_vali_name_length(self):
+        num_total = self._top or len(self._validator_data)
+        max_length = 0
+        for rank, coldkey in enumerate(reversed(sorted(
+            self._validator_data, key=self._get_sort_key
+        )), 1):
+            if rank > num_total:
+                break
+            validator_data = self._validator_data[coldkey]
+            length = len(validator_data.validator_name)
+            if length > max_length:
+                max_length = length
+        return max_length
+
     @staticmethod
-    def _get_vali_name_and_color(coldkey):
+    def _get_vali_name_and_type(validator):
+        coldkey = validator.coldkey
+        identity = validator.identity
+        vali_name = (identity or {}).get("name") or None
+        # This is SO HACKY!!
+        if vali_name:
+            if "/" in vali_name:
+                vali_name = vali_name.split("/")[0]
+            vali_name = vali_name.strip()
+
         if coldkey in LEGIT_VALI_COLDKEYS:
-            name = LEGIT_VALI_COLDKEYS[coldkey]
-            color = "bright_green" if name == "Rizzo" else "bright_blue"
-
+            vali_name = vali_name or LEGIT_VALI_COLDKEYS[coldkey]
+            vali_type = 1 if LEGIT_VALI_COLDKEYS[coldkey] == "Rizzo" else 2
         elif coldkey in WEIGHT_COPIER_COLDKEYS:
-            name = WEIGHT_COPIER_COLDKEYS[coldkey]
-            color = "bright_red"
-
+            vali_name = vali_name or WEIGHT_COPIER_COLDKEYS[coldkey]
+            vali_type = 3
         else:
-            name = coldkey[:6] + "..." + coldkey[-6:]
-            color = "default"
+            vali_name = vali_name or coldkey[:6] + "..." + coldkey[-6:]
+            vali_type = 0
 
-        return name, color
+        return vali_name, vali_type
+
+    def _get_sort_key(self, coldkey):
+        validator_data = self._validator_data[coldkey]
+        sort_attr = fields(validator_data)[self._sort - 1].name
+        return getattr(validator_data, sort_attr)
 
 
 def main():
