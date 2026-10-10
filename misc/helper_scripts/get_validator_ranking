@@ -89,6 +89,13 @@ def parse_args():
              "When not specified, use the 'finney' network subtensor."
     )
 
+    parser.add_argument(
+        "-d", "--skip-datacenter-subtensor",
+        action="store_true",
+        help="When specified, ignore the datacenter01 subtensor when randomly selecting "
+             "a local subtensor."
+    )
+
     return parser.parse_args()
 
 
@@ -450,7 +457,10 @@ def main():
         logger.info("Getting validator ranking.")
         start_time = time.time()
 
-        args.network = get_lite_subtensor_network(args.local_subtensor)
+        args.network = get_lite_subtensor_network(
+            args.local_subtensor,
+            args.skip_datacenter_subtensor
+        )
 
         try:
             with multiprocessing.Pool(processes=1) as pool:

@@ -45,12 +45,13 @@ def _create_get_lite_subtensor_network():
         "moonbase",
         "titan",
     ]
+    datacenter_subtensor = "datacenter01"
 
     # Randomize local subtensor.
     random.seed()
     local_subtensor_index = random.randint(0, len(local_lite_subtensors) - 1)
 
-    def get_network(name=None):
+    def get_network(name, skip_datacenter_subtensor):
 
         def get_network_from_name(name):
             return name if ":" in name else f"ws://subtensor-{name}.rizzo.network:9944"
@@ -60,8 +61,12 @@ def _create_get_lite_subtensor_network():
 
         if name is None:
             nonlocal local_subtensor_index
-            local_subtensor_index = (local_subtensor_index + 1) % len(local_lite_subtensors)
-            name = local_lite_subtensors[local_subtensor_index]
+
+            while True:
+                local_subtensor_index = (local_subtensor_index + 1) % len(local_lite_subtensors)
+                name = local_lite_subtensors[local_subtensor_index]
+                if not (skip_datacenter_subtensor and name == datacenter_subtensor):
+                    break
 
         return get_network_from_name(name)
     

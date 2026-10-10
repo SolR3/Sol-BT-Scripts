@@ -32,13 +32,23 @@ def parse_args():
              "When not specified, use the 'finney' network subtensor."
     )
 
+    parser.add_argument(
+        "-d", "--skip-datacenter-subtensor",
+        action="store_true",
+        help="When specified, ignore the datacenter01 subtensor when randomly selecting "
+             "a local subtensor."
+    )
+
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
 
-    network = get_lite_subtensor_network(args.local_subtensor)
+    network = get_lite_subtensor_network(
+        args.local_subtensor,
+        args.skip_datacenter_subtensor
+    )
     print(f"Connecting to {network}")
 
     # cost = bittensor.Subtensor(network=network).subnets.info(args.netuid).burn

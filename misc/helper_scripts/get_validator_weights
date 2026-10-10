@@ -75,6 +75,13 @@ def parse_args():
              "When not specified, use the 'finney' network subtensor."
     )
 
+    parser.add_argument(
+        "-d", "--skip-datacenter-subtensor",
+        action="store_true",
+        help="When specified, ignore the datacenter01 subtensor when randomly selecting "
+             "a local subtensor."
+    )
+
     return parser.parse_args()
 
 
@@ -88,11 +95,15 @@ class GetValidatorWeights:
         self._verbose = args.verbose
         self._print_coldkeys = args.print_coldkeys
         self._local_subtensor = args.local_subtensor
+        self._skip_datacenter_subtensor = args.skip_datacenter_subtensor
 
         self._run()
 
     def _run(self):
-        network = get_lite_subtensor_network(self._local_subtensor)
+        network = get_lite_subtensor_network(
+            self._local_subtensor,
+            self._skip_datacenter_subtensor
+        )
         print(f"Connecting to {network}")
     
         with bittensor.Subtensor(network=network) as subtensor:
