@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+
+# Standard imports
+import argparse
+import os
+from rich.text import Text
+from rich.console import Console
+import sys
+
+# Bittensor import
+import bittensor
+
+# Add local helper_scripts dir to path for importing helper_scripts_common.py
+sys.path = [os.path.dirname(__file__)] + sys.path
+
+# Local imports
+from helper_scripts_common import get_lite_subtensor_network
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-s",
+        dest="netuid",
+        type=int,
+        required=True,
+        help="The uid of the subnet.")
+
+    parser.add_argument(
+        "-l", "--local-subtensor",
+        nargs="?",
+        default=False,
+        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
+             "When not specified, use the 'finney' network subtensor."
+    )
+
+    parser.add_argument(
+        "-d", "--skip-datacenter-subtensor",
+        action="store_true",
+        help="When specified, ignore the datacenter01 subtensor when randomly selecting "
+             "a local subtensor."
+    )
+
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    network = get_lite_subtensor_network(
+        args.local_subtensor,
+        args.skip_datacenter_subtensor
+    )
+    print(f"Connecting to {network}")
+
+    metagraph = bittensor.Subtensor(network=network).subnets.metagraph(args.netuid)
+    repo = (metagraph.identity or {}).get("github_repo")
+    if not repo:
+        Console().print(Text(
+            f"\nNo github repo stored on the chain for subnet {args.netuid}.\n",
+            style="bright_red"
+        ))
+        return
+
+    text = Text(f"\nSubnet {args.netuid} github repo: ")
+    text.append(f"{repo}\n", style="bright_green")
+    Console().print(text)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt as exc:
+        import traceback
+        exc_list = traceback.format_exception_only(exc)
+        exc_text = "\n" + "".join(exc_list).strip("\n")
+        print(exc_text)
