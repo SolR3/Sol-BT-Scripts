@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+
+# Standard imports
+import argparse
+import asyncio
+import os
+import sys
+
+# Bittensor import
+import bittensor
+
+# Add local helper_scripts dir to path for importing helper_scripts_common.py
+sys.path = [os.path.dirname(__file__)] + sys.path
+
+# Local imports
+from helper_scripts_common import get_lite_subtensor_network
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "-s",
+        type=int,
+        dest="netuids",
+        nargs="+",
+        help="The uids of the subnets to check. If not specified then all subnets are checked.")
+
+    parser.add_argument(
+        "-l", "--local-subtensor",
+        nargs="?",
+        default=False,
+        help="Use the specified local subtensor (i.e. la, cali, titan, etc.). "
+             "When not specified, use the 'finney' network subtensor."
+    )
+
+    parser.add_argument(
+        "-d", "--skip-datacenter-subtensor",
+        action="store_true",
+        help="When specified, ignore the datacenter01 subtensor when randomly selecting "
+             "a local subtensor."
+    )
+
+    return parser.parse_args()
+
+
+async def main():
+    args = parse_args()
+
+    network = get_lite_subtensor_network(
+        args.local_subtensor,
+        args.skip_datacenter_subtensor
+    )
+    print(f"Connecting to {network}")
+
+    print("")
+    print("Validator activity cutoff")
+    print("==========================")
+
+    async with bittensor.Subtensor(network=network) as subtensor:
+        if args.netuids:
+            netuids = args.netuids
+        else:
+            subnets = await subtensor.subnets.all()
+            netuids = [sn.netuid for sn in subnets][1:]
+
+        cutoff_factors = await asyncio.gather(
+            *[
+                subtensor.query(
+                    bittensor.storage.SubtensorModule.ActivityCutoffFactorMilli,
+                    params=[netuid],
+                )
+                for netuid in netuids
+            ]
+        )
+
+        tempos = await asyncio.gather(
+            *[
+                subtensor.query(
+                    bittensor.storage.SubtensorModule.Tempo,
+                    params=[netuid],
+                )
+                for netuid in netuids
+            ]
+        )
+
+    for ni, netuid in enumerate(netuids):
+        cutoff_factor = cutoff_factors[ni]
+        tempo = tempos[ni]
+        cutoff_blocks = int(round(cutoff_factor * tempo / 1000))
+        cutoff_hours = cutoff_blocks * 12 / 60 / 60
+        print(f"{netuid:>3}: {cutoff_blocks:>5} blocks {cutoff_hours:5.1f} hours")
+
+    print("")
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt as exc:
+        import traceback
+        exc_list = traceback.format_exception_only(exc)
+        exc_text = "\n" + "".join(exc_list).strip("\n")
+        print(exc_text)
