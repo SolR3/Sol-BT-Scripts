@@ -185,6 +185,12 @@ class RankValidators:
                 # Get the emission for each subnet as a fraction of the total emission.
                 self._subnet_emissions = await self._get_subnet_emissions(snapshot, netuids)
 
+                # Get the updated blocks cutoff that determines whether a validator is
+                # actually for each subnet.
+                self._subnet_updated_cutoffs = await asyncio.gather(
+                    *[self._get_subnet_updated_cutoff(snapshot, netuid) for netuid in netuids]
+                )
+
                 # Get the validators' vTrusts for each subnet.
                 self._vtrusts = await asyncio.gather(
                     *[self._get_subnet_vtrusts(snapshot, netuid) for netuid in netuids]
@@ -233,6 +239,21 @@ class RankValidators:
         total_emission = sum(raw_emission)
         return [e / total_emission for e in raw_emission]
 
+    async def _get_subnet_updated_cutoff(self, snapshot, netuid):
+            cutoff_factor = await snapshot.query(
+                bittensor.storage.SubtensorModule.ActivityCutoffFactorMilli,
+                params=[netuid]
+            )
+            tempo = await snapshot.query(
+                bittensor.storage.SubtensorModule.Tempo,
+                params=[netuid]
+            )
+            # Add one tempo (epoch) to the validator activity cutoff as a fudge factor
+            # for determining whether the validator is actually validating. This is to
+            # keep from eliminating a validator that may still have some dividends due
+            # to its updated value being below the cutoff in the previous epoch.
+            return int(round(cutoff_factor * tempo / 1000)) + tempo
+
     async def _get_subnet_vtrusts(self, snapshot, netuid):
         raw_vtrusts = await snapshot.query(
             bittensor.storage.SubtensorModule.ValidatorTrust,
@@ -260,6 +281,7 @@ class RankValidators:
             metagraph = self._metagraphs[ni]
             mech_split = self._mech_splits[ni]
             subnet_emission = self._subnet_emissions[ni]
+            subnet_updated_cutoff = self._subnet_updated_cutoffs[ni]
             vtrust = self._vtrusts[ni]
             updated = self._updateds[ni]
             alpha_price = metagraph.price
@@ -279,10 +301,11 @@ class RankValidators:
                     continue
 
                 # Filter validators by last updated. If the validator's updated value
-                # for any non-zero emission mechanism < 5000 then it can be considered
+                # for any non-zero emission mechanism is less than the subnet's validator
+                # activity cutoff blocks plus one epoch fudge factor then it can be considered
                 # as legitimately validating.
                 for mechid, mech_emission in enumerate(mech_split):
-                    if mech_emission and updated[mechid][validator.uid] < 5000:
+                    if mech_emission and updated[mechid][validator.uid] < subnet_updated_cutoff:
                         break
                 else:
                     continue
